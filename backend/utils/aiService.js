@@ -1,82 +1,199 @@
 const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 
-// Initialize the SDK with your API key
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Initialize Gemini SDK with API key if available
+const apiKey = process.env.GEMINI_API_KEY || 'demo-key';
+const genAI = new GoogleGenerativeAI(apiKey);
 
-// Define the exact JSON structure we want the AI to return
-const expenseSchema = {
+// Schema for Natural Language Expense Extraction
+const expenseExtractionSchema = {
   type: SchemaType.OBJECT,
   properties: {
-    description: { type: SchemaType.STRING, description: "A short 1-3 word description of the expense" },
-    totalAmount: { type: SchemaType.NUMBER, description: "The total numeric amount of the bill" },
-    category: { 
-      type: SchemaType.STRING, 
-      description: "Must be exactly one of: Food & Drink, Travel, Utilities, Entertainment, Shopping, Others" 
+    description: { type: SchemaType.STRING, description: 'Short 1-4 word description of the expense' },
+    amount: { type: SchemaType.NUMBER, description: 'Total numeric amount spent' },
+    category: {
+      type: SchemaType.STRING,
+      description:
+        'Must be one of: Food & Dining, Groceries, Milk & Daily Essentials, Electricity, Internet, Water, Gas, Rent, Maid & Cleaning, Transport, Household, Entertainment, Subscriptions, Repairs, Other',
     },
-    splits: {
+    mentionedMemberNames: {
       type: SchemaType.ARRAY,
-      description: "The list of friends involved and how much they owe. Exclude the person who paid from this list.",
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          userId: { type: SchemaType.STRING, description: "The exact _id of the matched friend" },
-          amountOwed: { type: SchemaType.NUMBER, description: "The calculated numeric amount this person owes" }
-        },
-        required: ["userId", "amountOwed"]
+      description: 'List of room member names explicitly mentioned as participants. If "everyone" or "all", leave empty array or include "all".',
+      items: { type: SchemaType.STRING },
+    },
+  },
+  required: ['description', 'amount', 'category', 'mentionedMemberNames'],
+};
+
+/**
+ * Natural language expense parsing
+ */
+const extractExpenseData = async (naturalText, roomMembers) => {
+  if (!process.env.GEMINI_API_KEY) {
+    // Fallback parser if API key is not provided
+    const match = naturalText.match(/(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)/i);
+    const amount = match ? parseFloat(match[1]) : 0;
+    return {
+      description: naturalText.replace(/\d+/g, '').trim() || 'Shared Expense',
+      amount,
+      category: 'Other',
+      participantIds: roomMembers.map((m) => m._id.toString()),
+    };
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: expenseExtractionSchema,
+      },
+    });
+
+    const membersInfo = roomMembers.map((m) => `${m.name} (ID: ${m._id})`).join(', ');
+
+    const prompt = `
+      Extract shared expense details from this text: "${naturalText}".
+      Room members available: [${membersInfo}].
+      If the text implies everyone shared it (e.g. "for everyone", "for all of us", "bought milk"), return mentionedMemberNames as ["all"].
+    `;
+
+    const result = await model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text());
+
+    // Business validation: match names to member IDs
+    let participantIds = [];
+    if (!parsed.mentionedMemberNames || parsed.mentionedMemberNames.includes('all') || parsed.mentionedMemberNames.length === 0) {
+      participantIds = roomMembers.map((m) => m._id.toString());
+    } else {
+      participantIds = roomMembers
+        .filter((m) =>
+          parsed.mentionedMemberNames.some((name) => name.toLowerCase().includes(m.name.toLowerCase()) || m.name.toLowerCase().includes(name.toLowerCase()))
+        )
+        .map((m) => m._id.toString());
+
+      if (participantIds.length === 0) {
+        participantIds = roomMembers.map((m) => m._id.toString());
       }
     }
-  },
-  required: ["description", "totalAmount", "category", "splits"]
+
+    return {
+      description: parsed.description || 'Shared Expense',
+      amount: parsed.amount || 0,
+      category: parsed.category || 'Other',
+      participantIds,
+    };
+  } catch (error) {
+    console.error('AI Expense Extraction Error:', error);
+    // Graceful fallback
+    const match = naturalText.match(/(\d+(?:\.\d+)?)/);
+    const amount = match ? parseFloat(match[1]) : 0;
+    return {
+      description: naturalText.trim(),
+      amount,
+      category: 'Other',
+      participantIds: roomMembers.map((m) => m._id.toString()),
+    };
+  }
 };
 
-// The main function we will call from our controller
-const extractExpenseData = async (naturalText, friendsList) => {
-  // Use the fast and efficient Flash model
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: expenseSchema,
-    }
-  });
+/**
+ * Receipt OCR text parsing
+ */
+const extractReceiptItems = async (rawReceiptText) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return {
+      storeName: 'Grocery Store',
+      totalAmount: 250,
+      items: [
+        { name: 'Milk', price: 60 },
+        { name: 'Bread', price: 40 },
+        { name: 'Eggs', price: 150 },
+      ],
+    };
+  }
 
-  // Create a context block so the AI knows who the user's friends are
-  const friendsContext = friendsList.map(f => `Name: ${f.name}, ID: ${f._id}`).join(' | ');
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+      },
+    });
 
-  const prompt = `
-    You are a smart financial assistant. Extract the expense details from the following text.
-    Assume the user who wrote the text is the one who paid the total bill, unless explicitly stated otherwise.
-    Split the bill equally among everyone mentioned (including the payer) unless specific amounts are given.
-    
-    Here is the user's raw text: "${naturalText}"
-    
-    Here is the user's list of valid friends to match against: [${friendsContext}]
-    (Only include splits for friends found in this list. Use their exact ID).
-  `;
+    const prompt = `
+      Extract receipt line items from this raw text or OCR output:
+      "${rawReceiptText}"
+      Return JSON format: { "storeName": string, "totalAmount": number, "items": [{ "name": string, "price": number }] }
+    `;
 
-  const result = await model.generateContent(prompt);
-  return JSON.parse(result.response.text());
-};
-//  Generate financial insights based on category spending
-const generateFinancialInsights = async (categoryTotals) => {
-  // We can use 2.5-flash here because it's incredibly fast at reading data and writing text
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-  const prompt = `
-    You are a friendly, highly intelligent personal financial advisor. 
-    Here is a breakdown of your client's spending by category for this month:
-    ${JSON.stringify(categoryTotals)}
-
-    Write a 2-sentence financial insight for them. 
-    - Sentence 1 should analyze their highest spending category.
-    - Sentence 2 should offer a brief, encouraging tip on how to save money or balance their budget.
-    Keep the tone professional, modern, and concise. Do not use robotic greetings like "Hello client."
-  `;
-
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+    const result = await model.generateContent(prompt);
+    return JSON.parse(result.response.text());
+  } catch (error) {
+    console.error('AI Receipt Error:', error);
+    return { storeName: 'Store', totalAmount: 0, items: [] };
+  }
 };
 
+/**
+ * Fact-based "Ask SplitSense" natural language Q&A query engine
+ */
+const answerAskSplitSense = async (userQuestion, verifiedContextData) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return `Based on your room data: ${JSON.stringify(verifiedContextData.summary || verifiedContextData)}.`;
+  }
 
-module.exports = { extractExpenseData, generateFinancialInsights };
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+    const prompt = `
+      You are Ask SplitSense, a friendly household financial assistant for flatmates.
+      Answer the user's question accurately using ONLY the factual database records provided below.
+      Do NOT invent or fabricate any numbers or debts.
+      
+      User Question: "${userQuestion}"
+
+      Verified Household Database Context:
+      ${JSON.stringify(verifiedContextData, null, 2)}
+      
+      Provide a concise, direct 2-3 sentence answer with clear bullet points if listing debts.
+    `;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  } catch (error) {
+    console.error('Ask SplitSense Error:', error);
+    return 'Could not process question at this time. Please check your room dashboard.';
+  }
+};
+
+/**
+ * Generate monthly spending insights
+ */
+const generateFinancialInsights = async (monthlySummaryData) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return 'Your household has tracked shared expenses effectively this month. Keep up the good momentum!';
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const prompt = `
+      Here is the monthly household expenditure summary for a group of flatmates:
+      ${JSON.stringify(monthlySummaryData)}
+
+      Write a concise 2-sentence insight. Highlight the top expenditure category and offer a practical flatmate budgeting tip.
+    `;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  } catch (error) {
+    return 'Expenses tracked successfully for your room!';
+  }
+};
+
+module.exports = {
+  extractExpenseData,
+  extractReceiptItems,
+  answerAskSplitSense,
+  generateFinancialInsights,
+};

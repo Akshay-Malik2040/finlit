@@ -1,25 +1,20 @@
 const express = require('express');
 const router = express.Router();
-
-const { 
-  addExpense, 
+const {
+  addExpense,
   getExpenses,
-  getUserExpenses, 
-  getBalances, 
-  settleUp,
-  parseExpenseWithAI,
-  getAIInsights
+  getBalances,
+  deleteExpense,
+  getMonthlySummary,
 } = require('../controllers/expenseController');
-const { protect } = require('../middlewares/authMiddleware');
+const { protectMember } = require('../middlewares/memberAuth');
 
-// Notice how we put "protect" in the middle. 
-// It runs first, and if it passes, it moves to addExpense/getUserExpenses.
-router.route('/').post(protect, addExpense).get(protect, getUserExpenses);
-// New Analytics & Settlement Routes
-router.route('/balances').get(protect, getBalances);
-router.route('/settle').post(protect, settleUp);
-router.get('/', protect, getExpenses);
-router.post('/parse', protect, parseExpenseWithAI);
-router.get('/insights', protect, getAIInsights);
+router.use(protectMember);
+
+router.post('/', addExpense);
+router.get('/', getExpenses);
+router.get('/balances', getBalances);
+router.get('/monthly-summary', getMonthlySummary);
+router.delete('/:id', deleteExpense);
 
 module.exports = router;

@@ -2,13 +2,14 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI,{
-        family: 4, // Use the new connection string parser and topology engine
+    const mongoURI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/finlit_v2';
+    const conn = await mongoose.connect(mongoURI, {
+      family: 4,
     });
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
-    console.error(`Error: ${error.message}`);
-    process.exit(1); // Exit the process with failure
+    console.error(`❌ MongoDB Connection Error: ${error.message}`);
+    console.log('💡 Note: Please ensure MongoDB service is running locally or specify a valid MONGO_URI in backend/.env file.');
   }
 };
 

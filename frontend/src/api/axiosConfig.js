@@ -1,24 +1,36 @@
 import axios from 'axios';
-import { useAuthStore } from '../store/useAuthStore';
 
-const API = axios.create({
+const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-// Intercept every request before it leaves the frontend
-API.interceptors.request.use((config) => {
-  // Get the current state from our Zustand store
-  const state = useAuthStore.getState();
-  const token = state.user?.token;
-  
-  // If we have a token, attach it to the Authorization header
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+// Helper to ensure a unique device ID exists in localStorage
+export const getOrCreateDeviceId = () => {
+  let deviceId = localStorage.getItem('finlit_device_id') || localStorage.getItem('splitsense_device_id');
+  if (!deviceId) {
+    deviceId = 'dev_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+    localStorage.setItem('finlit_device_id', deviceId);
   }
-  
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+  return deviceId;
+};
 
-export default API;
+// Interceptor to inject room & device headers into every API request
+api.interceptors.request.use(
+  (config) => {
+    const deviceId = getOrCreateDeviceId();
+    const memberId = localStorage.getItem('finlit_member_id') || localStorage.getItem('splitsense_member_id');
+    const roomId = localStorage.getItem('finlit_room_id') || localStorage.getItem('splitsense_room_id');
+
+    config.headers['x-device-id'] = deviceId;
+    if (memberId) config.headers['x-member-id'] = memberId;
+    if (roomId) config.headers['x-room-id'] = roomId;
+
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+export default api;

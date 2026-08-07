@@ -1,248 +1,233 @@
-const Expense = require('../models/Expense');
-const { extractExpenseData, generateFinancialInsights } = require('../utils/aiService');
-const User = require('../models/User');
+const ExpenseV2 = require('../models/ExpenseV2');
+const Member = require('../models/Member');
+const { getMemberBalanceOverview } = require('../services/balanceService');
 
-// @desc    Add a new expense
+// @desc    Add a new expense (v2 with quick-add & idempotency support)
 // @route   POST /api/expenses
-// @access  Private
-// @desc    Create a new expense
+// @access  Protected
 const addExpense = async (req, res) => {
   try {
-    // FIX: Added 'category' to the destructuring right here! 👇
-    const { description, totalAmount, groupId, splits, category } = req.body;
-
-    const expense = await Expense.create({
+    const {
+      amount,
       description,
-      totalAmount,
-      category: category || 'Others', 
-      paidBy: req.user.id, 
-      groupId: groupId || null, 
-      splits: splits
+      category,
+      participantIds,
+      splits,
+      splitType = 'equal',
+      expenseScope = 'shared',
+      notes,
+      source = 'quick',
+      clientExpenseId,
+    } = req.body;
+
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ message: 'Valid positive amount required' });
+    }
+
+    // Idempotency check for offline sync retries
+    if (clientExpenseId) {
+      const existing = await ExpenseV2.findOne({
+        roomId: req.room._id,
+        clientExpenseId,
+      })
+        .populate('paidBy', 'name avatar')
+        .populate('participants.memberId', 'name avatar');
+
+      if (existing) {
+        // Already processed cleanly! Return existing object
+        const balances = await getMemberBalanceOverview(req.room._id, req.member._id);
+        return res.status(200).json({
+          expense: existing,
+          balances,
+          isDuplicate: true,
+        });
+      }
+    }
+
+    // Determine participants & split shares
+    let computedParticipants = [];
+
+    if (expenseScope === 'personal') {
+      // Personal expense: only paidBy gets 100% share
+      computedParticipants = [
+        {
+          memberId: req.member._id,
+          share: numericAmount,
+        },
+      ];
+    } else {
+      // Shared expense
+      if (splits && Array.isArray(splits) && splits.length > 0) {
+        computedParticipants = splits.map((s) => ({
+          memberId: s.memberId,
+          share: parseFloat(s.share),
+        }));
+      } else if (participantIds && Array.isArray(participantIds) && participantIds.length > 0) {
+        // Equal split among provided participant IDs
+        const equalShare = parseFloat((numericAmount / participantIds.length).toFixed(2));
+        computedParticipants = participantIds.map((id) => ({
+          memberId: id,
+          share: equalShare,
+        }));
+      } else {
+        // DEFAULT: Select all active room members by default!
+        const allMembers = await Member.find({ roomId: req.room._id, isActive: true });
+        const count = allMembers.length;
+        const equalShare = parseFloat((numericAmount / count).toFixed(2));
+        computedParticipants = allMembers.map((m) => ({
+          memberId: m._id,
+          share: equalShare,
+        }));
+      }
+    }
+
+    const expense = await ExpenseV2.create({
+      roomId: req.room._id,
+      paidBy: req.member._id,
+      amount: numericAmount,
+      description: description ? description.trim() : 'Shared Expense',
+      category: category || 'Other',
+      participants: computedParticipants,
+      splitType,
+      expenseScope,
+      notes: notes || '',
+      source,
+      clientExpenseId: clientExpenseId || null,
     });
 
-    res.status(201).json(expense);
+    const populatedExpense = await ExpenseV2.findById(expense._id)
+      .populate('paidBy', 'name avatar')
+      .populate('participants.memberId', 'name avatar');
+
+    const balances = await getMemberBalanceOverview(req.room._id, req.member._id);
+
+    res.status(201).json({
+      expense: populatedExpense,
+      balances,
+    });
   } catch (error) {
-    console.error("🔥 DATABASE ERROR: ", error); 
+    console.error('Add Expense Error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Get user's expenses
+// @desc    Get room expenses with pagination & filters
 // @route   GET /api/expenses
-// @access  Private
-const getUserExpenses = async (req, res) => {
+// @access  Protected
+const getExpenses = async (req, res) => {
   try {
-    // Find expenses where the user either paid OR is listed in the splits
-    const expenses = await Expense.find({
-      $or: [
-        { paidBy: req.user.id },
-        { 'splits.user': req.user.id }
-      ]
-    }).populate('paidBy', 'name email') // This replaces the ID with actual user details
-      .populate('splits.user', 'name email');
+    const { scope, category, limit = 50, month } = req.query;
+    const query = { roomId: req.room._id };
+
+    if (scope && ['shared', 'personal'].includes(scope)) {
+      query.expenseScope = scope;
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    if (month) {
+      // month format e.g. YYYY-MM
+      const start = new Date(`${month}-01T00:00:00.000Z`);
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
+      query.createdAt = { $gte: start, $lte: end };
+    }
+
+    const expenses = await ExpenseV2.find(query)
+      .populate('paidBy', 'name avatar')
+      .populate('participants.memberId', 'name avatar')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
 
     res.status(200).json(expenses);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-// @desc    Get user balances (Total Owed, Total Owes, Personal)
+
+// @desc    Get member balances overview
 // @route   GET /api/expenses/balances
-// @access  Private
+// @access  Protected
 const getBalances = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    const expenses = await Expense.find({
-      $or: [{ paidBy: userId }, { 'splits.user': userId }]
+    const overview = await getMemberBalanceOverview(req.room._id, req.member._id);
+    res.status(200).json(overview);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Delete an expense
+// @route   DELETE /api/expenses/:id
+// @access  Protected
+const deleteExpense = async (req, res) => {
+  try {
+    const expense = await ExpenseV2.findById(req.params.id);
+    if (!expense) {
+      return res.status(404).json({ message: 'Expense not found' });
+    }
+
+    if (expense.roomId.toString() !== req.room._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized room access' });
+    }
+
+    // Only owner or admin can delete
+    if (expense.paidBy.toString() !== req.member._id.toString() && req.member.role !== 'admin') {
+      return res.status(403).json({ message: 'Only the payer or room admin can delete this expense' });
+    }
+
+    await expense.deleteOne();
+    const updatedBalances = await getMemberBalanceOverview(req.room._id, req.member._id);
+
+    res.status(200).json({
+      message: 'Expense deleted successfully',
+      balances: updatedBalances,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get monthly household summary breakdown
+// @route   GET /api/expenses/monthly-summary
+// @access  Protected
+const getMonthlySummary = async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const sharedExpenses = await ExpenseV2.find({
+      roomId: req.room._id,
+      expenseScope: 'shared',
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
     });
 
-    const friendBalances = {}; 
-    let totalPersonalSpending = 0; // NEW: Track personal spending
+    const categoryBreakdown = {};
+    let totalMonthlyShared = 0;
 
-    expenses.forEach(expense => {
-      const payerId = expense.paidBy.toString();
-      const iPaid = payerId === userId;
-
-      // NEW LOGIC: Is this a personal expense?
-      if (iPaid && (!expense.splits || expense.splits.length === 0)) {
-        totalPersonalSpending += expense.totalAmount;
-        return; // Skip the rest of the loop for this expense
-      }
-
-      if (iPaid) {
-        expense.splits.forEach(split => {
-          const splitUserId = split.user.toString();
-          if (splitUserId !== userId) {
-            if (!friendBalances[splitUserId]) friendBalances[splitUserId] = 0;
-            friendBalances[splitUserId] += split.amountOwed; 
-          }
-        });
-      } else {
-        const mySplit = expense.splits.find(s => s.user.toString() === userId);
-        if (mySplit) {
-          if (!friendBalances[payerId]) friendBalances[payerId] = 0;
-          friendBalances[payerId] -= mySplit.amountOwed; 
-        }
-      }
-    });
-
-    let totalOwedToMe = 0;
-    let totalIOwe = 0;
-
-    Object.values(friendBalances).forEach(netAmount => {
-      if (netAmount > 0.01) {
-        totalOwedToMe += netAmount;
-      } else if (netAmount < -0.01) {
-        totalIOwe += Math.abs(netAmount);
-      }
+    sharedExpenses.forEach((exp) => {
+      totalMonthlyShared += exp.amount;
+      categoryBreakdown[exp.category] = (categoryBreakdown[exp.category] || 0) + exp.amount;
     });
 
     res.status(200).json({
-      totalOwedToMe,
-      totalIOwe,
-      netBalance: totalOwedToMe - totalIOwe,
-      totalPersonalSpending // <-- Sending it to the frontend!
+      monthName: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+      totalMonthlyShared,
+      categoryBreakdown,
+      expenseCount: sharedExpenses.length,
     });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
-// @desc    Settle up a debt (Pay someone back)
-// @route   POST /api/expenses/settle
-// @access  Private
-const settleUp = async (req, res) => {
-  try {
-    const { receiverId, amount } = req.body;
-
-    if (!receiverId || !amount) {
-      return res.status(400).json({ message: 'Please provide receiverId and amount' });
-    }
-
-    // Create a specific transaction that acts as a payment
-    const settlement = await Expense.create({
-      description: 'Payment / Settle Up',
-      totalAmount: amount,
-      paidBy: req.user.id, // You are paying the money
-      splits: [
-        { 
-          user: receiverId, // They "owe" you this payment, canceling out your previous debt to them
-          amountOwed: amount 
-        }
-      ],
-    });
-
-    res.status(201).json(settlement);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-// @desc    Get all expenses involving the user
-// @route   GET /api/expenses
-// @access  Private
-const getExpenses = async (req, res) => {
-  try {
-    const expenses = await Expense.find({
-      $or: [
-        { paidBy: req.user.id }, // <-- UPGRADED to paidBy
-        { 'splits.user': req.user.id }
-      ]
-    })
-    .populate('paidBy', 'name') // <-- UPGRADED to paidBy
-    .populate('splits.user', 'name')
-    .sort({ createdAt: -1 });
-
-    res.status(200).json(expenses);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-// @desc    Parse natural language into an expense object using AI
-// @route   POST /api/expenses/parse
-// @access  Private
-const parseExpenseWithAI = async (req, res) => {
-  try {
-    const { text } = req.body;
-    
-    if (!text) {
-      return res.status(400).json({ message: 'Please provide expense text' });
-    }
-
-    // Fetch the user's friends so the AI has context
-    const user = await User.findById(req.user.id).populate('friends', 'name _id');
-    
-    // Send the text and the friends list to Gemini
-    const parsedData = await extractExpenseData(text, user.friends);
-
-    // Send the perfectly formatted JSON back to the frontend to preview
-    res.status(200).json(parsedData);
-  } catch (error) {
-    console.error("🔥 AI PARSING ERROR: ", error);
-    res.status(500).json({ message: 'Failed to parse expense with AI. Please try manually.' });
-  }
-};
-// @desc    Generate AI financial insights
-// @route   GET /api/expenses/insights
-// @access  Private
-const getAIInsights = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    // Fetch all expenses involving the user
-    const expenses = await Expense.find({
-      $or: [{ paidBy: userId }, { 'splits.user': userId }]
-    });
-
-    if (expenses.length === 0) {
-      return res.status(200).json({ insight: "You haven't added any expenses yet. Start tracking to get AI insights!" });
-    }
-
-    // Calculate how much the user *actually* spent out of pocket per category
-    const categoryTotals = {};
-
-    expenses.forEach(exp => {
-      let myShare = 0;
-      const payerId = exp.paidBy.toString();
-
-      if (payerId === userId) {
-        // I paid the bill. My share is the Total minus what everyone else owes me.
-        let othersOwe = exp.splits
-          .filter(s => s.user.toString() !== userId)
-          .reduce((acc, s) => acc + s.amountOwed, 0);
-        myShare = exp.totalAmount - othersOwe;
-      } else {
-        // Someone else paid. My share is just what I owe them in the splits.
-        let mySplit = exp.splits.find(s => s.user.toString() === userId);
-        if (mySplit) myShare = mySplit.amountOwed;
-      }
-
-      if (myShare > 0) {
-        categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + myShare;
-      }
-    });
-
-    // Ask Gemini for advice!
-    const insightText = await generateFinancialInsights(categoryTotals);
-
-    res.status(200).json({ insight: insightText });
-  } catch (error) {
-    console.error("🔥 AI INSIGHTS ERROR: ", error);
-    res.status(500).json({ message: 'Failed to generate insights.' });
-  }
-};
-
-
 
 module.exports = {
   addExpense,
-  parseExpenseWithAI,
   getExpenses,
-  getUserExpenses,
   getBalances,
-  settleUp,
-  getAIInsights
-
+  deleteExpense,
+  getMonthlySummary,
 };
-  

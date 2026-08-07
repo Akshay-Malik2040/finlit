@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#111827">
+
+    <TextView
+        android:id="@+id/txt_room_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="SplitSense 🏠 Flat 302"
+        android:textColor="#10B981"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="₹ "
+            android:textColor="#10B981"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/edit_widget_amount"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="450"
+            android:textColorHint="#4B5563"
+            android:textColor="#FFFFFF"
+            android:inputType="numberDecimal"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:background="@null" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Akshay ✓   Rahul ✓   Rishi ✓   Aman ✓"
+        android:textColor="#9CA3AF"
+        android:textSize="11sp"
+        android:layout_marginTop="8dp" />
+
+    <Button
+        android:id="@+id/btn_widget_add"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="+ ADD EXPENSE"
+        android:textColor="#FFFFFF"
+        android:background="#059669"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginTop="12dp" />
+
+</LinearLayout>
