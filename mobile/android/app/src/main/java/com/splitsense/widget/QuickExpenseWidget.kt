@@ -10,8 +10,8 @@ import android.widget.RemoteViews
 import com.splitsense.R
 
 /**
- * SplitSense V2 Native Android Home Screen Widget Provider.
- * Allows flatmates to record ₹ amounts and adjust participants directly from launcher screen.
+ * FinLit Native Android Home Screen Widget Provider.
+ * Allows flatmates to quickly enter ₹ amount and log shared household expenses directly from the launcher.
  */
 class QuickExpenseWidget : AppWidgetProvider() {
 
@@ -26,8 +26,6 @@ class QuickExpenseWidget : AppWidgetProvider() {
     }
 
     companion object {
-        const fontColorGreen = 0xFF10B981.toInt()
-
         fun updateAppWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
@@ -36,9 +34,15 @@ class QuickExpenseWidget : AppWidgetProvider() {
             // Instantiate Android RemoteViews layout
             val views = RemoteViews(context.packageName, R.layout.quick_expense_widget)
 
-            // Deep-link intent to open full SplitSense V2 App Quick Add Modal
-            const ACTION_QUICK_ADD = "com.splitsense.ACTION_QUICK_ADD"
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("splitsense://quick-add")).apply {
+            // Read active room and member data from SharedPreferences
+            val prefs = context.getSharedPreferences("finlit_widget_prefs", Context.MODE_PRIVATE)
+            val roomName = prefs.getString("active_room_name", "Flat 302")
+            val memberSummary = prefs.getString("active_members_summary", "Everyone ✓")
+
+            views.setTextViewText(R.id.txt_room_title, "FinLit 🏠 $roomName")
+
+            // Deep-link intent to launch FinLit Quick Add Screen
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("finlit://quick-add")).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             val pendingIntent = PendingIntent.getActivity(
@@ -48,7 +52,7 @@ class QuickExpenseWidget : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Attach click listener to ADD button
+            // Attach click listener to ADD button & widget container
             views.setOnClickPendingIntent(R.id.btn_widget_add, pendingIntent)
 
             // Push layout update to Android Home Screen

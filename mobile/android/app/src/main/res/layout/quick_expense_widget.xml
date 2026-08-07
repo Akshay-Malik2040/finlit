@@ -10,7 +10,7 @@
         android:id="@+id/txt_room_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="SplitSense 🏠 Flat 302"
+        android:text="FinLit 🏠 Household"
         android:textColor="#10B981"
         android:textSize="12sp"
         android:textStyle="bold" />
@@ -45,9 +45,10 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/txt_widget_members"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Akshay ✓   Rahul ✓   Rishi ✓   Aman ✓"
+        android:text="Flatmates pre-selected ✓"
         android:textColor="#9CA3AF"
         android:textSize="11sp"
         android:layout_marginTop="8dp" />

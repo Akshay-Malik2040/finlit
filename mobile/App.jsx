@@ -1,77 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
-  StyleSheet,
-  Text,
   View,
-  TextInput,
+  Text,
   TouchableOpacity,
-  ScrollView,
+  StyleSheet,
   StatusBar,
+  Modal,
 } from 'react-native';
+import { useMobileRoomStore } from './src/store/useMobileRoomStore';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import QuickAddScreen from './src/screens/QuickAddScreen';
+import ActivityScreen from './src/screens/ActivityScreen';
+import BalancesScreen from './src/screens/BalancesScreen';
+import RoomScreen from './src/screens/RoomScreen';
 
 export default function App() {
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [members, setMembers] = useState(['Akshay', 'Rahul', 'Rishi', 'Aman']);
-  const [selected, setSelected] = useState(['Akshay', 'Rahul', 'Rishi', 'Aman']);
+  const { room, currentMember, initSession } = useMobileRoomStore();
 
-  const toggleSelect = (name) => {
-    if (selected.includes(name)) {
-      if (selected.length > 1) {
-        setSelected(selected.filter((m) => m !== name));
-      }
-    } else {
-      setSelected([...selected, name]);
-    }
-  };
+  const [activeTab, setActiveTab] = useState('Home'); // 'Home', 'Activity', 'Balances', 'Room'
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  useEffect(() => {
+    initSession();
+  }, []);
+
+  // Show accountless onboarding screen if no room or member session exists
+  if (!room || !currentMember) {
+    return <OnboardingScreen />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.brandTitle}>SplitSense V2</Text>
-          <Text style={styles.brandSubtitle}>Spend. Split. Forget.</Text>
-        </View>
+      <StatusBar barStyle="light-content" backgroundColor="#090d16" />
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>ENTER AMOUNT</Text>
-          <View style={styles.amountRow}>
-            <Text style={styles.currencySymbol}>₹</Text>
-            <TextInput
-              style={styles.amountInput}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor="#4b5563"
-              value={amount}
-              onChangeText={setAmount}
-            />
-          </View>
-        </View>
+      {/* Main Screen Content */}
+      <View style={styles.mainContent}>
+        {activeTab === 'Home' && (
+          <HomeScreen
+            onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
+        {activeTab === 'Activity' && <ActivityScreen />}
+        {activeTab === 'Balances' && <BalancesScreen />}
+        {activeTab === 'Room' && <RoomScreen />}
+      </View>
 
-        <Text style={styles.sectionTitle}>WHO SHARED THIS?</Text>
-        <View style={styles.membersRow}>
-          {members.map((m) => {
-            const isSelected = selected.includes(m);
-            return (
-              <TouchableOpacity
-                key={m}
-                onPress={() => toggleSelect(m)}
-                style={[styles.memberPill, isSelected ? styles.memberSelected : styles.memberUnselected]}
-              >
-                <Text style={[styles.memberText, isSelected && styles.memberTextSelected]}>
-                  {m} {isSelected ? '✓' : '+'}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+      {/* Floating Quick Add Button */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setIsQuickAddOpen(true)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fabIcon}>+</Text>
+        <Text style={styles.fabText}>ADD</Text>
+      </TouchableOpacity>
 
-        <TouchableOpacity style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>SAVE EXPENSE</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      {/* Bottom Navigation Bar */}
+      <View style={styles.navbar}>
+        {['Home', 'Activity', 'Balances', 'Room'].map((tab) => {
+          const isActive = activeTab === tab;
+          const icon = tab === 'Home' ? '🏠' : tab === 'Activity' ? '📜' : tab === 'Balances' ? '⚖️' : '👥';
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={styles.navItem}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={styles.navIcon}>{icon}</Text>
+              <Text style={[styles.navText, isActive && styles.navTextActive]}>{tab}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Quick Add Modal */}
+      <Modal visible={isQuickAddOpen} animationType="slide" presentationStyle="fullScreen">
+        <QuickAddScreen onClose={() => setIsQuickAddOpen(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -81,103 +89,63 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#090d16',
   },
-  content: {
-    padding: 24,
+  mainContent: {
+    flex: 1,
   },
-  header: {
-    marginBottom: 24,
-  },
-  brandTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#ffffff',
-  },
-  brandSubtitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#10b981',
-    letterSpacing: 2,
-    marginTop: 4,
-  },
-  card: {
-    backgroundColor: '#111827',
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-  },
-  cardLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#10b981',
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  amountRow: {
+  fab: {
+    position: 'absolute',
+    bottom: 74,
+    right: 20,
+    backgroundColor: '#059669',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 28,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    elevation: 8,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    zIndex: 40,
   },
-  currencySymbol: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#10b981',
-    marginRight: 6,
-  },
-  amountInput: {
-    fontSize: 48,
+  fabIcon: {
+    fontSize: 20,
     fontWeight: '900',
     color: '#ffffff',
-    minWidth: 120,
-    textAlign: 'center',
   },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6b7280',
-    letterSpacing: 1.5,
-    marginBottom: 12,
-  },
-  membersRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 32,
-  },
-  memberPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  memberSelected: {
-    backgroundColor: '#059669',
-    borderColor: '#10b981',
-  },
-  memberUnselected: {
-    backgroundColor: '#1f2937',
-    borderColor: '#374151',
-  },
-  memberText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#9ca3af',
-  },
-  memberTextSelected: {
-    color: '#ffffff',
-  },
-  saveButton: {
-    backgroundColor: '#059669',
-    paddingVertical: 18,
-    borderRadius: 20,
-    alignItems: 'center',
-    elevation: 4,
-  },
-  saveButtonText: {
-    fontSize: 16,
+  fabText: {
+    fontSize: 14,
     fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 1,
+  },
+  navbar: {
+    flexDirection: 'row',
+    backgroundColor: '#111827',
+    borderTopWidth: 1,
+    borderTopColor: '#1f2937',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  navItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIcon: {
+    fontSize: 18,
+  },
+  navText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  navTextActive: {
+    color: '#10b981',
+    fontWeight: '900',
   },
 });
