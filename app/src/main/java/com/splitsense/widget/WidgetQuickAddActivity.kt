@@ -129,9 +129,13 @@ class WidgetQuickAddActivity : ComponentActivity() {
 
                     db.expenseDao().insertExpense(localExpense)
 
-                    // Enqueue background sync
+                    // Enqueue background sync with immediate REPLACE policy
                     val syncWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>().build()
-                    WorkManager.getInstance(applicationContext).enqueue(syncWorkRequest)
+                    WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                        "widget_instant_sync",
+                        androidx.work.ExistingWorkPolicy.REPLACE,
+                        syncWorkRequest
+                    )
 
                     // Update Glance Widget status banner
                     for (glanceId in glanceIds) {

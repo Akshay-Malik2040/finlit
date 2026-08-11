@@ -165,7 +165,11 @@ class SubmitExpenseActionCallback : ActionCallback {
             db.expenseDao().insertExpense(localExpense)
 
             val syncWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>().build()
-            WorkManager.getInstance(context).enqueue(syncWorkRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "widget_instant_sync",
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                syncWorkRequest
+            )
 
             updateAppWidgetState(context, glanceId) { prefs ->
                 prefs[WidgetKeys.KEY_AMOUNT] = ""
