@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -259,14 +260,17 @@ fun HouseholdFinancialOverview(
     val netBalance = youAreOwedTotal - youOweTotal
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Month Filter Bar + Export PDF Button
+        // Month Filter Bar + Beautifully Styled PDF Export Pill
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("This Month", "Last Month", "All Time").forEach { monthOption ->
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(listOf("This Month", "Last Month", "All Time")) { monthOption ->
                     FilterChip(
                         selected = selectedMonth == monthOption,
                         onClick = { onMonthSelected(monthOption) },
@@ -275,10 +279,32 @@ fun HouseholdFinancialOverview(
                 }
             }
 
-            OutlinedButton(onClick = onExportPdf) {
-                Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF")
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("PDF")
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Surface(
+                onClick = onExportPdf,
+                shape = CircleShape,
+                color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.PictureAsPdf,
+                        contentDescription = "Export PDF Report",
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "PDF Report",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFDC2626)
+                    )
+                }
             }
         }
 
