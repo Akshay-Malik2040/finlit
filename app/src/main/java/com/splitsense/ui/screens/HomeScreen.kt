@@ -47,7 +47,7 @@ fun HomeScreen(
     DisposableEffect(lifecycleOwner, context) {
         val receiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(c: android.content.Context?, intent: android.content.Intent?) {
-                viewModel.refreshBalances()
+                viewModel.reloadExpenses()
             }
         }
 
@@ -61,7 +61,7 @@ fun HomeScreen(
 
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshBalances()
+                viewModel.reloadExpenses()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

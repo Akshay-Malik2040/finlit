@@ -143,7 +143,7 @@ const joinRoom = async (req, res) => {
       });
     }
 
-    const allMembers = await Member.find({ roomId: room._id, isActive: true }).select('name role avatar lastActiveAt');
+    const allMembers = await Member.find({ roomId: room._id, isActive: true }).select('_id name role avatar lastActiveAt');
 
     res.status(200).json({
       room: {
@@ -220,7 +220,7 @@ const recoverMember = async (req, res) => {
 // @access  Protected
 const getRoomDetails = async (req, res) => {
   try {
-    const members = await Member.find({ roomId: req.room._id, isActive: true }).select('name role avatar deviceId lastActiveAt');
+    const members = await Member.find({ roomId: req.room._id, isActive: true }).select('_id name role avatar deviceId lastActiveAt');
     res.status(200).json({
       room: {
         id: req.room._id,

@@ -38,5 +38,6 @@ data class JoinRoomRequest(
 data class RoomResponse(
     val message: String? = null,
     val room: RoomDto,
-    val member: MemberDto
+    val member: MemberDto,
+    val members: List<MemberDto> = emptyList()
 )

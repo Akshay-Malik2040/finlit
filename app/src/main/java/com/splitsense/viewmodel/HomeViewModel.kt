@@ -42,23 +42,51 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             
-            identityManager.roomId.flatMapLatest { roomId ->
-                if (roomId != null) {
-                    combine(
-                        repository.currentRoom,
-                        repository.getExpenses(roomId),
-                        repository.getMembers(roomId)
-                    ) { room, expenses, members ->
-                        Triple(room, expenses, members)
+            // 1. Observe local Room DB immediately so UI opens instantly without waiting for network
+            launch {
+                identityManager.roomId.flatMapLatest { roomId ->
+                    if (roomId != null) {
+                        combine(
+                            repository.currentRoom,
+                            repository.getExpenses(roomId),
+                            repository.getMembers(roomId)
+                        ) { room, expenses, members ->
+                            Triple(room, expenses, members)
+                        }
+                    } else {
+                        flowOf(Triple(null, emptyList(), emptyList()))
                     }
-                } else {
-                    flowOf(Triple(null, emptyList(), emptyList()))
+                }.collect { (room, expenses, members) ->
+                    _state.update { it.copy(room = room, expenses = expenses, members = members, isLoading = false) }
+                    if (room != null) {
+                        refreshBalances()
+                    }
                 }
-            }.collect { (room, expenses, members) ->
-                _state.update { it.copy(room = room, expenses = expenses, members = members, isLoading = false) }
-                if (room != null) {
-                    refreshBalances()
+            }
+
+            // 2. Sync latest room details, members & expenses in background safely
+            launch {
+                try {
+                    repository.syncLatestRoomData()
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
+            }
+        }
+    }
+
+    fun reloadExpenses() {
+        viewModelScope.launch {
+            try {
+                repository.syncLatestRoomData()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            val roomId = identityManager.roomId.first()
+            if (roomId != null) {
+                val latestExpenses = repository.fetchExpensesFromDb(roomId)
+                _state.update { it.copy(expenses = latestExpenses) }
+                refreshBalances()
             }
         }
     }

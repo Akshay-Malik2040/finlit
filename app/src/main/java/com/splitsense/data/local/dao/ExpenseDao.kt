@@ -9,6 +9,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE roomId = :roomId ORDER BY createdAt DESC")
     fun getExpensesForRoom(roomId: String): Flow<List<ExpenseEntity>>
 
+    @Query("SELECT * FROM expenses WHERE roomId = :roomId ORDER BY createdAt DESC")
+    suspend fun getExpensesForRoomOnce(roomId: String): List<ExpenseEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExpenses(expenses: List<ExpenseEntity>)
 

@@ -58,10 +58,11 @@ const addExpense = async (req, res) => {
       ];
     } else {
       // Shared expense
-      if (splits && Array.isArray(splits) && splits.length > 0) {
-        computedParticipants = splits.map((s) => ({
-          memberId: s.memberId,
-          share: parseFloat(s.share),
+      const rawParticipants = req.body.participants || splits;
+      if (rawParticipants && Array.isArray(rawParticipants) && rawParticipants.length > 0) {
+        computedParticipants = rawParticipants.map((s) => ({
+          memberId: s.memberId || s,
+          share: s.share !== undefined ? parseFloat(s.share) : parseFloat((numericAmount / rawParticipants.length).toFixed(2)),
         }));
       } else if (participantIds && Array.isArray(participantIds) && participantIds.length > 0) {
         // Equal split among provided participant IDs
@@ -73,7 +74,7 @@ const addExpense = async (req, res) => {
       } else {
         // DEFAULT: Select all active room members by default!
         const allMembers = await Member.find({ roomId: req.room._id, isActive: true });
-        const count = allMembers.length;
+        const count = allMembers.length || 1;
         const equalShare = parseFloat((numericAmount / count).toFixed(2));
         computedParticipants = allMembers.map((m) => ({
           memberId: m._id,
@@ -112,27 +113,86 @@ const addExpense = async (req, res) => {
   }
 };
 
+// @desc    Update an existing expense (or void/cancel it)
+// @route   PUT /api/expenses/:id
+// @access  Protected
+const updateExpense = async (req, res) => {
+  try {
+    const { amount, description, category, participants, splitType } = req.body;
+    
+    const expense = await ExpenseV2.findById(req.params.id);
+    if (!expense) {
+      return res.status(404).json({ message: 'Expense not found' });
+    }
+
+    if (expense.roomId.toString() !== req.room._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized room access' });
+    }
+
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount < 0) {
+      return res.status(400).json({ message: 'Valid non-negative amount required' });
+    }
+
+    let computedParticipants = [];
+    if (participants && Array.isArray(participants) && participants.length > 0) {
+      computedParticipants = participants.map((p) => ({
+        memberId: p.memberId || p,
+        share: p.share !== undefined ? parseFloat(p.share) : 0,
+      }));
+    } else {
+      computedParticipants = [
+        {
+          memberId: req.member._id,
+          share: 0,
+        },
+      ];
+    }
+
+    expense.amount = numericAmount;
+    if (description) expense.description = description.trim();
+    if (category) expense.category = category;
+    if (splitType) expense.splitType = splitType;
+    expense.participants = computedParticipants;
+
+    await expense.save();
+
+    const populatedExpense = await ExpenseV2.findById(expense._id)
+      .populate('paidBy', 'name avatar')
+      .populate('participants.memberId', 'name avatar');
+
+    const balances = await getMemberBalanceOverview(req.room._id, req.member._id);
+
+    res.status(200).json({
+      expense: populatedExpense,
+      balances,
+    });
+  } catch (error) {
+    console.error('Update Expense Error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // @desc    Get room expenses with pagination & filters
 // @route   GET /api/expenses
 // @access  Protected
 const getExpenses = async (req, res) => {
   try {
     const { scope, category, limit = 50, month } = req.query;
+
     const query = { roomId: req.room._id };
 
-    if (scope && ['shared', 'personal'].includes(scope)) {
+    if (scope && scope !== 'all') {
       query.expenseScope = scope;
     }
-
-    if (category) {
+    if (category && category !== 'All') {
       query.category = category;
     }
 
-    if (month) {
-      // month format e.g. YYYY-MM
-      const start = new Date(`${month}-01T00:00:00.000Z`);
-      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
-      query.createdAt = { $gte: start, $lte: end };
+    // Filter expenses created on or after member's join date (with a 60-second buffer for clock skew)
+    if (req.member && req.member.createdAt) {
+      const joinThreshold = new Date(new Date(req.member.createdAt).getTime() - 60000);
+      query.createdAt = { $gte: joinThreshold };
     }
 
     const expenses = await ExpenseV2.find(query)
@@ -226,6 +286,7 @@ const getMonthlySummary = async (req, res) => {
 
 module.exports = {
   addExpense,
+  updateExpense,
   getExpenses,
   getBalances,
   deleteExpense,

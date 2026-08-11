@@ -25,11 +25,15 @@ class MainViewModel @Inject constructor(
 
     private fun checkIdentity() {
         viewModelScope.launch {
-            val roomId = identityManager.roomId.first()
-            if (roomId.isNullOrBlank()) {
+            try {
+                val roomId = identityManager.roomId.first()
+                if (roomId.isNullOrBlank()) {
+                    _startDestination.value = "onboarding"
+                } else {
+                    _startDestination.value = "home"
+                }
+            } catch (e: Exception) {
                 _startDestination.value = "onboarding"
-            } else {
-                _startDestination.value = "home"
             }
         }
     }

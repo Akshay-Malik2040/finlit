@@ -57,6 +57,8 @@ class SplitSenseRepository @Inject constructor(
 
     fun getExpenses(roomId: String): Flow<List<ExpenseEntity>> = expenseDao.getExpensesForRoom(roomId)
 
+    suspend fun fetchExpensesFromDb(roomId: String): List<ExpenseEntity> = expenseDao.getExpensesForRoomOnce(roomId)
+
     suspend fun createRoom(roomName: String, memberName: String): Result<Unit> {
         return try {
             val deviceId = identityManager.getOrCreateDeviceId()
@@ -100,6 +102,62 @@ class SplitSenseRepository @Inject constructor(
         }
     }
 
+    suspend fun syncLatestRoomData(): Result<Unit> {
+        return try {
+            val deviceId = identityManager.deviceId.first()
+            val memberId = identityManager.memberId.first() ?: return Result.failure(Exception("No member ID"))
+            val roomId = identityManager.roomId.first() ?: return Result.failure(Exception("No room ID"))
+
+            // 1. Fetch latest room details & members from backend API
+            val roomResp = api.getRoomDetails(roomId, deviceId, memberId)
+            if (roomResp.isSuccessful && roomResp.body() != null) {
+                val body = roomResp.body()!!
+                roomDao.insertRoom(RoomEntity(
+                    id = body.room.roomId,
+                    name = body.room.name,
+                    joinCode = body.room.joinCode,
+                    currency = body.room.settings?.currency ?: "INR",
+                    simplifyDebts = body.room.settings?.simplifyDebts ?: true
+                ))
+                if (body.members.isNotEmpty()) {
+                    val memberEntities = body.members.map { m ->
+                        MemberEntity(
+                            id = m.memberId,
+                            roomId = body.room.roomId,
+                            name = m.name,
+                            role = m.role,
+                            avatar = m.avatar,
+                            isActive = m.isActive
+                        )
+                    }
+                    memberDao.insertMembers(memberEntities)
+                }
+            }
+
+            // 2. Fetch latest expenses from backend API
+            val expResp = api.getExpenses(deviceId, memberId, roomId)
+            if (expResp.isSuccessful && expResp.body() != null) {
+                val expEntities = expResp.body()!!.map { dto ->
+                    ExpenseEntity(
+                        id = dto._id,
+                        roomId = dto.roomId,
+                        paidBy = dto.paidBy,
+                        amount = dto.amount,
+                        description = dto.description,
+                        category = dto.category,
+                        clientExpenseId = dto.clientExpenseId ?: dto._id,
+                        isSynced = true
+                    )
+                }
+                expenseDao.insertExpenses(expEntities)
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun joinRoom(joinCode: String, memberName: String): Result<Unit> {
         return try {
             val deviceId = identityManager.getOrCreateDeviceId()
@@ -110,6 +168,11 @@ class SplitSenseRepository @Inject constructor(
                 val roomIdStr = body.room.roomId
                 val memberIdStr = body.member.memberId
                 
+                // Clear old local tables before populating new room
+                expenseDao.clearExpenses()
+                memberDao.clearMembers()
+                roomDao.clearRoom()
+
                 roomDao.insertRoom(RoomEntity(
                     id = roomIdStr,
                     name = body.room.name,
@@ -118,14 +181,28 @@ class SplitSenseRepository @Inject constructor(
                     simplifyDebts = body.room.settings?.simplifyDebts ?: true
                 ))
                 
-                memberDao.insertMembers(listOf(MemberEntity(
-                    id = memberIdStr,
-                    roomId = roomIdStr,
-                    name = body.member.name,
-                    role = body.member.role,
-                    avatar = body.member.avatar,
-                    isActive = body.member.isActive
-                )))
+                val memberEntities = if (body.members.isNotEmpty()) {
+                    body.members.map { m ->
+                        MemberEntity(
+                            id = m.memberId,
+                            roomId = roomIdStr,
+                            name = m.name,
+                            role = m.role,
+                            avatar = m.avatar,
+                            isActive = m.isActive
+                        )
+                    }
+                } else {
+                    listOf(MemberEntity(
+                        id = memberIdStr,
+                        roomId = roomIdStr,
+                        name = body.member.name,
+                        role = body.member.role,
+                        avatar = body.member.avatar,
+                        isActive = body.member.isActive
+                    ))
+                }
+                memberDao.insertMembers(memberEntities)
                 
                 identityManager.saveIdentity(
                     memberId = memberIdStr,
@@ -134,6 +211,9 @@ class SplitSenseRepository @Inject constructor(
                     roomName = body.room.name
                 )
                 
+                // Immediately sync all existing expenses & members for this room
+                syncLatestRoomData()
+
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to join room: ${response.message()}"))
@@ -185,11 +265,18 @@ class SplitSenseRepository @Inject constructor(
             )
             expenseDao.insertExpense(localExpense)
 
+            val perShare = if (participants.isNotEmpty()) amount / participants.size else 0.0
+            val participantDtos = if (participants.isNotEmpty()) {
+                participants.map { ParticipantDto(it, perShare) }
+            } else {
+                listOf(ParticipantDto(memberId, 0.0))
+            }
+
             val request = CreateExpenseRequest(
                 amount = amount,
                 description = description,
                 paidBy = memberId,
-                participants = participants.map { ParticipantDto(it, amount / participants.size) },
+                participants = participantDtos,
                 category = category,
                 clientExpenseId = clientExpenseId
             )
