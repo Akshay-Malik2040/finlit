@@ -94,9 +94,19 @@ const getMemberBalanceOverview = async (roomId, targetMemberId) => {
 
   roomData.netTransactions.forEach((t) => {
     if (t.from.id === targetIdStr) {
-      oweList.push({ member: t.to, amount: t.amount });
+      oweList.push({
+        memberId: t.to.id,
+        name: t.to.name,
+        amount: t.amount,
+        member: t.to,
+      });
     } else if (t.to.id === targetIdStr) {
-      owedByList.push({ member: t.from, amount: t.amount });
+      owedByList.push({
+        memberId: t.from.id,
+        name: t.from.name,
+        amount: t.amount,
+        member: t.from,
+      });
     }
   });
 

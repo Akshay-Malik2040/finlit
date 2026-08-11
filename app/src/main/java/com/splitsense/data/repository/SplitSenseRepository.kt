@@ -102,11 +102,14 @@ class SplitSenseRepository @Inject constructor(
         }
     }
 
-    suspend fun syncLatestRoomData(): Result<Unit> {
+    suspend fun syncLatestRoomData(
+        explicitRoomId: String? = null,
+        explicitMemberId: String? = null
+    ): Result<Unit> {
         return try {
             val deviceId = identityManager.deviceId.first()
-            val memberId = identityManager.memberId.first() ?: return Result.failure(Exception("No member ID"))
-            val roomId = identityManager.roomId.first() ?: return Result.failure(Exception("No room ID"))
+            val memberId = explicitMemberId ?: identityManager.memberId.first() ?: return Result.failure(Exception("No member ID"))
+            val roomId = explicitRoomId ?: identityManager.roomId.first() ?: return Result.failure(Exception("No room ID"))
 
             // 1. Fetch latest room details & members from backend API
             val roomResp = api.getRoomDetails(roomId, deviceId, memberId)
@@ -211,8 +214,8 @@ class SplitSenseRepository @Inject constructor(
                     roomName = body.room.name
                 )
                 
-                // Immediately sync all existing expenses & members for this room
-                syncLatestRoomData()
+                // Immediately sync all existing expenses & members for this room using explicit IDs
+                syncLatestRoomData(roomIdStr, memberIdStr)
 
                 Result.success(Unit)
             } else {
