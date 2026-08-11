@@ -122,7 +122,9 @@ class WidgetQuickAddActivity : ComponentActivity() {
                         description = "$categoryStr Expense",
                         category = categoryStr,
                         clientExpenseId = clientExpenseId,
-                        isSynced = false
+                        isSynced = false,
+                        isEdited = false,
+                        editLog = ""
                     )
 
                     db.expenseDao().insertExpense(localExpense)
