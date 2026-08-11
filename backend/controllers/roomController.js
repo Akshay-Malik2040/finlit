@@ -30,9 +30,10 @@ const hashRecoveryCode = (code) => {
 // @access  Public (device-based)
 const createRoom = async (req, res) => {
   try {
-    const { name, creatorName, deviceId } = req.body;
+    const { name, creatorName, memberName, deviceId } = req.body;
+    const authorName = creatorName || memberName;
 
-    if (!name || !creatorName || !deviceId) {
+    if (!name || !authorName || !deviceId) {
       return res.status(400).json({ message: 'Room name, creator name, and device ID are required' });
     }
 
@@ -53,7 +54,7 @@ const createRoom = async (req, res) => {
 
     const member = await Member.create({
       roomId: room._id,
-      name: creatorName.trim(),
+      name: authorName.trim(),
       role: 'admin',
       deviceId,
       recoveryCodeHash,
@@ -64,17 +65,20 @@ const createRoom = async (req, res) => {
 
     res.status(201).json({
       room: {
-        id: room._id,
+        _id: room._id.toString(),
+        id: room._id.toString(),
         name: room.name,
         joinCode: room.joinCode,
         createdAt: room.createdAt,
       },
       member: {
-        id: member._id,
+        _id: member._id.toString(),
+        id: member._id.toString(),
         name: member.name,
         role: member.role,
         deviceId: member.deviceId,
-        roomId: member.roomId,
+        roomId: member.roomId.toString(),
+        isActive: member.isActive,
       },
       recoveryCode, // Sent ONLY ONCE
     });
@@ -89,9 +93,10 @@ const createRoom = async (req, res) => {
 // @access  Public (device-based)
 const joinRoom = async (req, res) => {
   try {
-    const { joinCode, name, deviceId } = req.body;
+    const { joinCode, name, memberName, deviceId } = req.body;
+    const authorName = name || memberName;
 
-    if (!joinCode || !name || !deviceId) {
+    if (!joinCode || !authorName || !deviceId) {
       return res.status(400).json({ message: 'Join code, member name, and device ID are required' });
     }
 
@@ -110,20 +115,28 @@ const joinRoom = async (req, res) => {
       });
     }
 
-    // Check if member with this deviceId is already in room
-    let member = await Member.findOne({ roomId: room._id, deviceId, isActive: true });
+    // Check if member with this deviceId OR name in room exists (Reinstallation Recovery)
+    let member = await Member.findOne({
+      roomId: room._id,
+      $or: [
+        { deviceId },
+        { name: { $regex: new RegExp(`^${authorName.trim()}$`, 'i') } }
+      ],
+      isActive: true
+    });
 
     const recoveryCode = generateRecoveryCode();
     const recoveryCodeHash = hashRecoveryCode(recoveryCode);
 
     if (member) {
-      member.name = name.trim();
+      member.name = authorName.trim();
+      member.deviceId = deviceId; // Re-bind new device ID to existing account
       member.recoveryCodeHash = recoveryCodeHash;
       await member.save();
     } else {
       member = await Member.create({
         roomId: room._id,
-        name: name.trim(),
+        name: authorName.trim(),
         role: 'member',
         deviceId,
         recoveryCodeHash,
@@ -134,17 +147,20 @@ const joinRoom = async (req, res) => {
 
     res.status(200).json({
       room: {
-        id: room._id,
+        _id: room._id.toString(),
+        id: room._id.toString(),
         name: room.name,
         joinCode: room.joinCode,
         createdAt: room.createdAt,
       },
       member: {
-        id: member._id,
+        _id: member._id.toString(),
+        id: member._id.toString(),
         name: member.name,
         role: member.role,
         deviceId: member.deviceId,
-        roomId: member.roomId,
+        roomId: member.roomId.toString(),
+        isActive: member.isActive,
       },
       members: allMembers,
       recoveryCode, // Sent ONLY ONCE
