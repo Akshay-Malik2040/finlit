@@ -189,10 +189,17 @@ const getExpenses = async (req, res) => {
       query.category = category;
     }
 
-    // Filter expenses created on or after member's join date (with a 60-second buffer for clock skew)
-    if (req.member && req.member.createdAt) {
-      const joinThreshold = new Date(new Date(req.member.createdAt).getTime() - 60000);
-      query.createdAt = { $gte: joinThreshold };
+    // A member sees expenses where they paid, are a participant, or created since they joined
+    if (req.member) {
+      const joinThreshold = req.member.createdAt
+        ? new Date(new Date(req.member.createdAt).getTime() - 60000)
+        : new Date(0);
+
+      query.$or = [
+        { paidBy: req.member._id },
+        { 'participants.memberId': req.member._id },
+        { createdAt: { $gte: joinThreshold } }
+      ];
     }
 
     const expenses = await ExpenseV2.find(query)

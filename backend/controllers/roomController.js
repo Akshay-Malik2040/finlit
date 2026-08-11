@@ -121,8 +121,7 @@ const joinRoom = async (req, res) => {
       $or: [
         { deviceId },
         { name: { $regex: new RegExp(`^${authorName.trim()}$`, 'i') } }
-      ],
-      isActive: true
+      ]
     });
 
     const recoveryCode = generateRecoveryCode();
@@ -131,6 +130,7 @@ const joinRoom = async (req, res) => {
     if (member) {
       member.name = authorName.trim();
       member.deviceId = deviceId; // Re-bind new device ID to existing account
+      member.isActive = true; // Restore active status
       member.recoveryCodeHash = recoveryCodeHash;
       await member.save();
     } else {
