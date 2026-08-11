@@ -281,7 +281,8 @@ fun HouseholdFinancialOverview(
     onExportPdf: () -> Unit
 ) {
     val totalHouseholdSpent = state.expenses.sumOf { it.amount }
-    val outOfPocket = state.expenses.filter { it.paidBy == state.members.firstOrNull()?.id }.sumOf { it.amount }
+    val outOfPocket = state.balances?.summary?.get("totalPersonalSpending")
+        ?: state.expenses.filter { it.paidBy == state.members.firstOrNull()?.id }.sumOf { it.amount }
     val memberCount = if (state.members.isNotEmpty()) state.members.size else 1
     val userShare = totalHouseholdSpent / memberCount
     val difference = outOfPocket - userShare

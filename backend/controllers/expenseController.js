@@ -189,17 +189,14 @@ const getExpenses = async (req, res) => {
       query.category = category;
     }
 
-    // A member sees expenses where they paid, are a participant, or created since they joined
+    // Activity feed respects the user's current active membership period (currentJoinedAt -> now)
     if (req.member) {
-      const joinThreshold = req.member.createdAt
-        ? new Date(new Date(req.member.createdAt).getTime() - 60000)
+      const activeSince = req.member.currentJoinedAt || req.member.createdAt;
+      const joinThreshold = activeSince
+        ? new Date(new Date(activeSince).getTime() - 60000)
         : new Date(0);
 
-      query.$or = [
-        { paidBy: req.member._id },
-        { 'participants.memberId': req.member._id },
-        { createdAt: { $gte: joinThreshold } }
-      ];
+      query.createdAt = { $gte: joinThreshold };
     }
 
     const expenses = await ExpenseV2.find(query)

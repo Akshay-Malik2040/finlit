@@ -39,6 +39,13 @@ const memberSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    currentJoinedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    leftAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
