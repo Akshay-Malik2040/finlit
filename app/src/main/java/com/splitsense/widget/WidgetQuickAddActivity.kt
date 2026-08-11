@@ -129,6 +129,16 @@ class WidgetQuickAddActivity : ComponentActivity() {
 
                     db.expenseDao().insertExpense(localExpense)
 
+                    // Send instant broadcast to notify running app
+                    try {
+                        val broadcastIntent = android.content.Intent("com.splitsense.ACTION_EXPENSE_ADDED").apply {
+                            setPackage(applicationContext.packageName)
+                        }
+                        applicationContext.sendBroadcast(broadcastIntent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
                     // Enqueue background sync with immediate REPLACE policy
                     val syncWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>().build()
                     WorkManager.getInstance(applicationContext).enqueueUniqueWork(

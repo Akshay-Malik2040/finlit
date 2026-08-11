@@ -42,6 +42,37 @@ fun HomeScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, context) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, intent: android.content.Intent?) {
+                viewModel.refreshBalances()
+            }
+        }
+
+        val filter = android.content.IntentFilter("com.splitsense.ACTION_EXPENSE_ADDED")
+        androidx.core.content.ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshBalances()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (e: Exception) { }
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     var selectedExpenseForDetails by remember { mutableStateOf<ExpenseEntity?>(null) }
     var selectedSettlementDebt by remember { mutableStateOf<DebtDto?>(null) }

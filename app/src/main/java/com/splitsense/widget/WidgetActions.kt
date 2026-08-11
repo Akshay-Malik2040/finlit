@@ -164,6 +164,16 @@ class SubmitExpenseActionCallback : ActionCallback {
 
             db.expenseDao().insertExpense(localExpense)
 
+            // Send instant broadcast to notify running app
+            try {
+                val broadcastIntent = android.content.Intent("com.splitsense.ACTION_EXPENSE_ADDED").apply {
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(broadcastIntent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             val syncWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>().build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "widget_instant_sync",
