@@ -189,13 +189,9 @@ const getExpenses = async (req, res) => {
       query.category = category;
     }
 
-    // Activity feed respects the user's current active membership period (currentJoinedAt -> now)
-    if (req.member) {
-      const activeSince = req.member.currentJoinedAt || req.member.createdAt;
-      const joinThreshold = activeSince
-        ? new Date(new Date(activeSince).getTime() - 60000)
-        : new Date(0);
-
+    // Filter expenses created on or after member's join date (createdAt)
+    if (req.member && req.member.createdAt) {
+      const joinThreshold = new Date(new Date(req.member.createdAt).getTime() - 60000);
       query.createdAt = { $gte: joinThreshold };
     }
 

@@ -131,7 +131,6 @@ const joinRoom = async (req, res) => {
       member.name = authorName.trim();
       member.deviceId = deviceId; // Re-bind new device ID to existing account
       member.isActive = true; // Restore active status
-      member.currentJoinedAt = new Date(); // Update membership period start for activity feed
       member.recoveryCodeHash = recoveryCodeHash;
       await member.save();
     } else {
@@ -141,7 +140,6 @@ const joinRoom = async (req, res) => {
         role: 'member',
         deviceId,
         recoveryCodeHash,
-        currentJoinedAt: new Date(),
       });
     }
 

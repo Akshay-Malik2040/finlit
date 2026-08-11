@@ -407,11 +407,14 @@ class SplitSenseRepository @Inject constructor(
         }
     }
 
-    suspend fun getBalances(): Result<BalancesResponse> {
+    suspend fun getBalances(
+        explicitRoomId: String? = null,
+        explicitMemberId: String? = null
+    ): Result<BalancesResponse> {
         return try {
             val deviceId = identityManager.deviceId.first()
-            val memberId = identityManager.memberId.first() ?: return Result.failure(Exception("No member ID"))
-            val roomId = identityManager.roomId.first() ?: return Result.failure(Exception("No room ID"))
+            val memberId = explicitMemberId ?: identityManager.memberId.first() ?: return Result.failure(Exception("No member ID"))
+            val roomId = explicitRoomId ?: identityManager.roomId.first() ?: return Result.failure(Exception("No room ID"))
             
             val response = api.getBalances(deviceId, memberId, roomId)
             if (response.isSuccessful && response.body() != null) {
