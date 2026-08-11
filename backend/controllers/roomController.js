@@ -52,12 +52,15 @@ const createRoom = async (req, res) => {
     const recoveryCode = generateRecoveryCode();
     const recoveryCodeHash = hashRecoveryCode(recoveryCode);
 
+    const now = new Date();
     const member = await Member.create({
       roomId: room._id,
       name: authorName.trim(),
       role: 'admin',
       deviceId,
       recoveryCodeHash,
+      currentJoinedAt: now,
+      membershipPeriods: [{ joinedAt: now, leftAt: null }],
     });
 
     room.createdBy = member._id;
@@ -132,14 +135,28 @@ const joinRoom = async (req, res) => {
       member.deviceId = deviceId; // Re-bind new device ID to existing account
       member.isActive = true; // Restore active status
       member.recoveryCodeHash = recoveryCodeHash;
+
+      // Append new membership interval if previous interval was closed
+      if (!member.membershipPeriods || member.membershipPeriods.length === 0) {
+        member.membershipPeriods = [{ joinedAt: member.createdAt || new Date(), leftAt: null }];
+      } else {
+        const lastPeriod = member.membershipPeriods[member.membershipPeriods.length - 1];
+        if (lastPeriod.leftAt) {
+          member.membershipPeriods.push({ joinedAt: new Date(), leftAt: null });
+        }
+      }
+
       await member.save();
     } else {
+      const now = new Date();
       member = await Member.create({
         roomId: room._id,
         name: authorName.trim(),
         role: 'member',
         deviceId,
         recoveryCodeHash,
+        currentJoinedAt: now,
+        membershipPeriods: [{ joinedAt: now, leftAt: null }],
       });
     }
 
@@ -258,7 +275,15 @@ const removeMember = async (req, res) => {
     }
 
     targetMember.isActive = false;
-    targetMember.leftAt = new Date();
+    const now = new Date();
+    targetMember.leftAt = now;
+
+    if (targetMember.membershipPeriods && targetMember.membershipPeriods.length > 0) {
+      const lastPeriod = targetMember.membershipPeriods[targetMember.membershipPeriods.length - 1];
+      if (!lastPeriod.leftAt) {
+        lastPeriod.leftAt = now;
+      }
+    }
     await targetMember.save();
 
     const remainingMembers = await Member.find({ roomId: req.room._id, isActive: true }).select('name role avatar deviceId lastActiveAt');

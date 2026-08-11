@@ -1,4 +1,16 @@
-const mongoose = require('mongoose');
+const membershipPeriodSchema = new mongoose.Schema(
+  {
+    joinedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    leftAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
 
 const memberSchema = new mongoose.Schema(
   {
@@ -45,6 +57,12 @@ const memberSchema = new mongoose.Schema(
     },
     leftAt: {
       type: Date,
+    },
+    membershipPeriods: {
+      type: [membershipPeriodSchema],
+      default: function () {
+        return [{ joinedAt: new Date(), leftAt: null }];
+      },
     },
   },
   {
