@@ -46,9 +46,17 @@ export default function Dashboard() {
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
 
   useEffect(() => {
-    if (room) {
-      fetchDashboardData();
-    }
+    if (!room) return;
+
+    fetchDashboardData();
+
+    const pollInterval = setInterval(() => {
+      if (navigator.onLine && !document.hidden) {
+        useRoomStore.getState().fetchDashboardData();
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
   }, [room]);
 
   useEffect(() => {

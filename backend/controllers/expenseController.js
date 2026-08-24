@@ -189,25 +189,6 @@ const getExpenses = async (req, res) => {
       query.category = category;
     }
 
-    // Filter activities so they are visible ONLY if created during ANY of the user's membership periods
-    if (req.member) {
-      const periods = (req.member.membershipPeriods && req.member.membershipPeriods.length > 0)
-        ? req.member.membershipPeriods
-        : [{ joinedAt: req.member.createdAt || new Date(0), leftAt: null }];
-
-      const periodConditions = periods.map((p) => {
-        const joinTime = new Date(new Date(p.joinedAt).getTime() - 60000);
-        if (p.leftAt) {
-          const leaveTime = new Date(new Date(p.leftAt).getTime() + 60000);
-          return { createdAt: { $gte: joinTime, $lte: leaveTime } };
-        } else {
-          return { createdAt: { $gte: joinTime } };
-        }
-      });
-
-      query.$or = periodConditions;
-    }
-
     const expenses = await ExpenseV2.find(query)
       .populate('paidBy', 'name avatar')
       .populate('participants.memberId', 'name avatar')

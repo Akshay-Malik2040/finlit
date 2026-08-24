@@ -29,8 +29,10 @@ export default function App() {
       const state = useMobileRoomStore.getState();
       if (state.offlineQueue.length > 0) {
         state.syncOfflineQueue();
+      } else if (state.room) {
+        state.fetchDashboardData();
       }
-    }, 10000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
