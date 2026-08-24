@@ -155,9 +155,10 @@ data class BalancesResponse(
 
 @Serializable
 data class DebtDto(
-    val memberId: String,
-    val name: String,
-    val amount: Double
+    @Serializable(with = StringOrObjectSerializer::class)
+    val memberId: String = "",
+    val name: String = "",
+    val amount: Double = 0.0
 )
 
 @Serializable
@@ -176,10 +177,12 @@ data class CreateSettlementRequest(
 
 @Serializable
 data class SettlementDto(
-    val _id: String,
-    val fromMember: String,
-    val toMember: String,
-    val amount: Double,
+    val _id: String = "",
+    @Serializable(with = StringOrObjectSerializer::class)
+    val fromMember: String = "",
+    @Serializable(with = StringOrObjectSerializer::class)
+    val toMember: String = "",
+    val amount: Double = 0.0,
     val paymentMethod: String = "UPI",
     val createdAt: String = ""
 )

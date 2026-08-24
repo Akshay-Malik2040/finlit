@@ -143,7 +143,7 @@ class SplitSenseRepository @Inject constructor(
                 val expEntities = expResp.body()!!.map { dto ->
                     ExpenseEntity(
                         id = dto._id,
-                        roomId = dto.roomId,
+                        roomId = dto.roomId.ifBlank { roomId },
                         paidBy = dto.paidBy,
                         amount = dto.amount,
                         description = dto.description,
