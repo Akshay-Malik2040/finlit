@@ -11,10 +11,32 @@ import {
 import { useMobileRoomStore } from '../store/useMobileRoomStore';
 
 export default function HomeScreen({ onOpenQuickAdd, onNavigateTab }) {
-  const { room, currentMember, expenses, balances, monthlySummary, isLoading, fetchDashboardData, offlineQueue, syncOfflineQueue, isSyncing } = useMobileRoomStore();
+  const { room, currentMember, expenses, settlements, balances, monthlySummary, isLoading, fetchDashboardData, offlineQueue, syncOfflineQueue, isSyncing } = useMobileRoomStore();
 
   const { summary } = balances || {};
   const netBalance = summary?.netBalance || 0;
+
+  // Combine expenses and settlements chronologically
+  const recentActivities = [
+    ...(expenses || []).map((e) => ({
+      _id: e._id || e.id,
+      type: 'expense',
+      title: e.description || 'Shared Expense',
+      payer: `Paid by ${e.paidBy?.name || 'Flatmate'} • ${e.category || 'General'}`,
+      amount: e.amount,
+      split: `${e.participants?.length || 1} split`,
+      sortTime: new Date(e.createdAt || Date.now()).getTime(),
+    })),
+    ...(settlements || []).map((s) => ({
+      _id: s._id || s.id,
+      type: 'settlement',
+      title: `${s.fromMember?.name || 'Flatmate'} paid ${s.toMember?.name || 'Flatmate'}`,
+      payer: `Settlement via ${s.paymentMethod || 'UPI'}`,
+      amount: s.amount,
+      split: 'Settled',
+      sortTime: new Date(s.createdAt || Date.now()).getTime(),
+    })),
+  ].sort((a, b) => b.sortTime - a.sortTime);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -84,41 +106,42 @@ export default function HomeScreen({ onOpenQuickAdd, onNavigateTab }) {
         )}
 
         {/* Recent Household Expenses List */}
+        {/* Recent Household Activities List */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>RECENT HOUSEHOLD EXPENSES</Text>
+          <Text style={styles.sectionTitle}>RECENT HOUSEHOLD ACTIVITIES</Text>
           <TouchableOpacity onPress={() => onNavigateTab('Activity')}>
             <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
         </View>
 
-        {expenses.length === 0 ? (
+        {recentActivities.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No expenses logged yet in {room?.name}.</Text>
+            <Text style={styles.emptyText}>No activity logged yet in {room?.name}.</Text>
             <TouchableOpacity style={styles.emptyAddBtn} onPress={onOpenQuickAdd}>
               <Text style={styles.emptyAddBtnText}>+ Log First Shared Expense</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.expenseList}>
-            {expenses.slice(0, 5).map((item) => (
+            {recentActivities.slice(0, 5).map((item) => (
               <View key={item._id} style={styles.expenseItem}>
                 <View style={styles.expenseLeft}>
-                  <View style={styles.expenseIcon}>
+                  <View style={[styles.expenseIcon, item.type === 'settlement' && { backgroundColor: '#1e3a8a' }]}>
                     <Text style={styles.expenseIconText}>
-                      {item.category === 'Milk & Daily' ? '🥛' : item.category === 'Food & Dining' ? '🍕' : '🛒'}
+                      {item.type === 'settlement' ? '🤝' : '🛒'}
                     </Text>
                   </View>
                   <View>
-                    <Text style={styles.expenseTitle}>{item.description}</Text>
-                    <Text style={styles.expensePayer}>
-                      Paid by {item.paidBy?.name || 'Flatmate'} • {item.category}
-                    </Text>
+                    <Text style={styles.expenseTitle}>{item.title}</Text>
+                    <Text style={styles.expensePayer}>{item.payer}</Text>
                   </View>
                 </View>
 
                 <View style={styles.expenseRight}>
-                  <Text style={styles.expenseAmount}>₹{item.amount}</Text>
-                  <Text style={styles.expenseSplit}>{item.participants?.length || 1} split</Text>
+                  <Text style={[styles.expenseAmount, item.type === 'settlement' && { color: '#60a5fa' }]}>
+                    ₹{item.amount}
+                  </Text>
+                  <Text style={styles.expenseSplit}>{item.split}</Text>
                 </View>
               </View>
             ))}

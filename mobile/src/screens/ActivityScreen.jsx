@@ -6,16 +6,47 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  RefreshControl,
 } from 'react-native';
 import { useMobileRoomStore } from '../store/useMobileRoomStore';
 
 export default function ActivityScreen() {
-  const { expenses, room } = useMobileRoomStore();
-  const [filter, setFilter] = useState('All'); // 'All', 'Shared', 'Personal'
+  const { expenses, settlements, room, isLoading, fetchDashboardData } = useMobileRoomStore();
+  const [filter, setFilter] = useState('All'); // 'All', 'Shared', 'Personal', 'Settlements'
 
-  const filteredExpenses = expenses.filter((e) => {
-    if (filter === 'Shared') return e.expenseScope === 'shared';
-    if (filter === 'Personal') return e.expenseScope === 'personal';
+  // Combine expenses and settlements into chronological timeline
+  const normalizedExpenses = (expenses || []).map((e) => ({
+    _id: e._id || e.id,
+    type: 'expense',
+    title: e.description || 'Shared Expense',
+    subtitle: `Paid by ${e.paidBy?.name || 'Flatmate'} • ${new Date(e.createdAt || Date.now()).toLocaleDateString()}`,
+    amount: e.amount,
+    category: e.category || 'Other',
+    scope: e.expenseScope || 'shared',
+    isPendingSync: e.isPendingSync,
+    sortTime: new Date(e.createdAt || Date.now()).getTime(),
+  }));
+
+  const normalizedSettlements = (settlements || []).map((s) => ({
+    _id: s._id || s.id,
+    type: 'settlement',
+    title: `${s.fromMember?.name || 'Flatmate'} paid ${s.toMember?.name || 'Flatmate'}`,
+    subtitle: `Settlement via ${s.paymentMethod || 'UPI'} • ${new Date(s.createdAt || Date.now()).toLocaleDateString()}`,
+    amount: s.amount,
+    category: 'Settlement',
+    scope: 'settlement',
+    isPendingSync: s.isPendingSync,
+    sortTime: new Date(s.createdAt || Date.now()).getTime(),
+  }));
+
+  const allActivities = [...normalizedExpenses, ...normalizedSettlements].sort(
+    (a, b) => b.sortTime - a.sortTime
+  );
+
+  const filteredActivities = allActivities.filter((item) => {
+    if (filter === 'Shared') return item.scope === 'shared';
+    if (filter === 'Personal') return item.scope === 'personal';
+    if (filter === 'Settlements') return item.type === 'settlement';
     return true;
   });
 
@@ -23,11 +54,11 @@ export default function ActivityScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>{room?.name || 'Flat'} Activity Feed</Text>
-        <Text style={styles.subtitle}>All recorded household transactions</Text>
+        <Text style={styles.subtitle}>All recorded household transactions & settlements</Text>
 
         {/* Filter Pills */}
         <View style={styles.filterRow}>
-          {['All', 'Shared', 'Personal'].map((f) => (
+          {['All', 'Shared', 'Personal', 'Settlements'].map((f) => (
             <TouchableOpacity
               key={f}
               onPress={() => setFilter(f)}
@@ -38,31 +69,44 @@ export default function ActivityScreen() {
           ))}
         </View>
 
-        <ScrollView contentContainerStyle={styles.list}>
-          {filteredExpenses.length === 0 ? (
+        <ScrollView
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={isLoading} onRefresh={fetchDashboardData} tintColor="#10b981" />
+          }
+        >
+          {filteredActivities.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No transactions found for filter "{filter}".</Text>
+              <Text style={styles.emptyText}>No recent activity found for filter "{filter}".</Text>
             </View>
           ) : (
-            filteredExpenses.map((e) => (
-              <View key={e._id} style={styles.card}>
+            filteredActivities.map((item) => (
+              <View key={item._id} style={styles.card}>
                 <View style={styles.left}>
-                  <View style={styles.iconBox}>
+                  <View style={[styles.iconBox, item.type === 'settlement' && styles.iconBoxSettlement]}>
                     <Text style={styles.iconText}>
-                      {e.category === 'Milk & Daily' ? '🥛' : e.category === 'Food & Dining' ? '🍕' : '🛒'}
+                      {item.type === 'settlement'
+                        ? '🤝'
+                        : item.category === 'Milk & Daily'
+                        ? '🥛'
+                        : item.category === 'Food & Dining'
+                        ? '🍕'
+                        : '🛒'}
                     </Text>
                   </View>
-                  <View>
-                    <Text style={styles.desc}>{e.description}</Text>
-                    <Text style={styles.sub}>
-                      Paid by {e.paidBy?.name || 'Flatmate'} • {new Date(e.createdAt).toLocaleDateString()}
-                    </Text>
+                  <View style={styles.infoCol}>
+                    <Text style={styles.desc}>{item.title}</Text>
+                    <Text style={styles.sub}>{item.subtitle}</Text>
                   </View>
                 </View>
 
                 <View style={styles.right}>
-                  <Text style={styles.amount}>₹{e.amount}</Text>
-                  <Text style={styles.badge}>{e.expenseScope || 'shared'}</Text>
+                  <Text style={[styles.amount, item.type === 'settlement' && styles.settlementAmount]}>
+                    ₹{item.amount}
+                  </Text>
+                  <Text style={[styles.badge, item.type === 'settlement' && styles.settlementBadge]}>
+                    {item.isPendingSync ? '⏳ Offline' : item.scope}
+                  </Text>
                 </View>
               </View>
             ))
@@ -95,11 +139,11 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     marginBottom: 16,
   },
   filterPill: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: '#111827',
     borderRadius: 12,
@@ -111,7 +155,7 @@ const styles = StyleSheet.create({
     borderColor: '#10b981',
   },
   filterText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#9ca3af',
   },
@@ -136,6 +180,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   iconBox: {
     width: 38,
@@ -143,10 +188,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#064e3b',
     alignItems: 'center',
-    justify.content: 'center',
+    justifyContent: 'center',
+  },
+  iconBoxSettlement: {
+    backgroundColor: '#1e3a8a',
   },
   iconText: {
     fontSize: 16,
+  },
+  infoCol: {
+    flex: 1,
   },
   desc: {
     fontSize: 14,
@@ -166,12 +217,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#ffffff',
   },
+  settlementAmount: {
+    color: '#60a5fa',
+  },
   badge: {
     fontSize: 10,
     fontWeight: '800',
     color: '#10b981',
     marginTop: 2,
     textTransform: 'uppercase',
+  },
+  settlementBadge: {
+    color: '#93c5fd',
   },
   emptyCard: {
     backgroundColor: '#111827',

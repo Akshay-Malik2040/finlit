@@ -136,23 +136,26 @@ export const useMobileRoomStore = create((set, get) => ({
     return computedBalances;
   },
 
-  // Fetch Expenses & Balances
+  // Fetch Expenses, Settlements & Balances
   fetchDashboardData: async () => {
     const { room, currentMember } = get();
     if (!room) return;
     set({ isLoading: true });
     try {
-      const [expensesRes, balancesRes, summaryRes, roomRes] = await Promise.all([
+      const [expensesRes, settlementsRes, balancesRes, summaryRes, roomRes] = await Promise.all([
         api.get('/expenses'),
+        api.get('/settlements').catch(() => ({ data: [] })),
         api.get('/expenses/balances'),
         api.get('/expenses/monthly-summary'),
         api.get(`/rooms/${room.id || room._id}`),
       ]);
 
       const expenses = expensesRes.data || [];
+      const settlements = settlementsRes.data || [];
       const members = roomRes.data?.members || [];
 
       await storage.setItem('finlit_expenses', JSON.stringify(expenses));
+      await storage.setItem('finlit_settlements', JSON.stringify(settlements));
       await storage.setItem('finlit_members', JSON.stringify(members));
 
       let balances = balancesRes.data;
@@ -160,7 +163,7 @@ export const useMobileRoomStore = create((set, get) => ({
         balances = computeLocalBalances({
           members,
           expenses,
-          settlements: get().settlements,
+          settlements,
           currentMemberId: currentMember?._id || currentMember?.id,
         });
       }
@@ -168,6 +171,7 @@ export const useMobileRoomStore = create((set, get) => ({
 
       set({
         expenses,
+        settlements,
         balances,
         monthlySummary: summaryRes.data || null,
         members,
