@@ -38,4 +38,22 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Interceptor to handle global 401 Unauthorized responses
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response && error.response.status === 401) {
+      try {
+        await storage.removeItem('finlit_member_id');
+        await storage.removeItem('finlit_room_id');
+        await storage.removeItem('finlit_room');
+        await storage.removeItem('finlit_member');
+      } catch (e) {
+        console.error('Error clearing mobile storage on 401:', e);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

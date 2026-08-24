@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Member = require('../models/Member');
 const Room = require('../models/Room');
 
@@ -12,11 +13,19 @@ const protectMember = async (req, res, next) => {
     }
 
     let member = null;
-    if (memberId) {
+
+    // 1. Try finding by memberId if valid ObjectId
+    if (memberId && mongoose.Types.ObjectId.isValid(memberId)) {
       member = await Member.findById(memberId);
-    } else if (deviceId && roomId) {
+    }
+
+    // 2. Fallback: Try finding active member by deviceId and roomId if provided
+    if ((!member || !member.isActive) && deviceId && roomId && mongoose.Types.ObjectId.isValid(roomId)) {
       member = await Member.findOne({ deviceId, roomId, isActive: true });
-    } else if (deviceId) {
+    }
+
+    // 3. Fallback: Try finding most recently active member by deviceId
+    if ((!member || !member.isActive) && deviceId) {
       member = await Member.findOne({ deviceId, isActive: true }).sort({ lastActiveAt: -1 });
     }
 

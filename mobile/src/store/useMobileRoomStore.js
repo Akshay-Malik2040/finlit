@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api, { getOrCreateDeviceId } from '../api/client';
 import storage from '../storage/asyncStorage';
+import { computeLocalBalances } from '../utils/localBalanceCalculator';
 
 export const useMobileRoomStore = create((set, get) => ({
   room: null,
@@ -10,6 +11,7 @@ export const useMobileRoomStore = create((set, get) => ({
   recoveryCode: null,
 
   expenses: [],
+  settlements: [],
   balances: {
     summary: { netBalance: 0, totalIOwe: 0, totalOwedToMe: 0 },
     youOwe: [],
@@ -29,20 +31,29 @@ export const useMobileRoomStore = create((set, get) => ({
     try {
       const roomRaw = await storage.getItem('finlit_room');
       const memberRaw = await storage.getItem('finlit_member');
+      const membersRaw = await storage.getItem('finlit_members');
+      const expensesRaw = await storage.getItem('finlit_expenses');
+      const settlementsRaw = await storage.getItem('finlit_settlements');
+      const balancesRaw = await storage.getItem('finlit_balances');
       const recoveryCode = await storage.getItem('finlit_recovery_code');
       const queueRaw = await storage.getItem('finlit_offline_queue');
 
       const room = roomRaw ? JSON.parse(roomRaw) : null;
       const currentMember = memberRaw ? JSON.parse(memberRaw) : null;
+      const members = membersRaw ? JSON.parse(membersRaw) : [];
+      const expenses = expensesRaw ? JSON.parse(expensesRaw) : [];
+      const settlements = settlementsRaw ? JSON.parse(settlementsRaw) : [];
+      const balances = balancesRaw ? JSON.parse(balancesRaw) : get().balances;
       const offlineQueue = queueRaw ? JSON.parse(queueRaw) : [];
 
-      set({ room, currentMember, recoveryCode, offlineQueue });
+      set({ room, currentMember, members, expenses, settlements, balances, recoveryCode, offlineQueue });
 
       if (room) {
+        get().recalculateLocalBalances();
         await get().fetchDashboardData();
       }
     } catch (err) {
-      console.error('Init session error:', err);
+      console.error('Init mobile session error:', err);
     }
   },
 
@@ -110,9 +121,24 @@ export const useMobileRoomStore = create((set, get) => ({
     }
   },
 
+  // Recalculates balances locally from current state
+  recalculateLocalBalances: () => {
+    const { members, expenses, settlements, currentMember } = get();
+    const currentMemberId = currentMember?._id || currentMember?.id;
+    const computedBalances = computeLocalBalances({
+      members,
+      expenses,
+      settlements,
+      currentMemberId,
+    });
+    storage.setItem('finlit_balances', JSON.stringify(computedBalances));
+    set({ balances: computedBalances });
+    return computedBalances;
+  },
+
   // Fetch Expenses & Balances
   fetchDashboardData: async () => {
-    const { room } = get();
+    const { room, currentMember } = get();
     if (!room) return;
     set({ isLoading: true });
     try {
@@ -123,22 +149,45 @@ export const useMobileRoomStore = create((set, get) => ({
         api.get(`/rooms/${room.id || room._id}`),
       ]);
 
+      const expenses = expensesRes.data || [];
+      const members = roomRes.data?.members || [];
+
+      await storage.setItem('finlit_expenses', JSON.stringify(expenses));
+      await storage.setItem('finlit_members', JSON.stringify(members));
+
+      let balances = balancesRes.data;
+      if (!balances || !balances.summary) {
+        balances = computeLocalBalances({
+          members,
+          expenses,
+          settlements: get().settlements,
+          currentMemberId: currentMember?._id || currentMember?.id,
+        });
+      }
+      await storage.setItem('finlit_balances', JSON.stringify(balances));
+
       set({
-        expenses: expensesRes.data || [],
-        balances: balancesRes.data || get().balances,
+        expenses,
+        balances,
         monthlySummary: summaryRes.data || null,
-        members: roomRes.data?.members || [],
+        members,
         isLoading: false,
       });
+
+      // Auto-trigger offline queue sync if pending items exist
+      if (get().offlineQueue.length > 0) {
+        get().syncOfflineQueue();
+      }
     } catch (err) {
-      console.error('Fetch mobile dashboard data error:', err);
+      console.warn('Fetch mobile dashboard data offline fallback:', err);
+      get().recalculateLocalBalances();
       set({ isLoading: false });
     }
   },
 
   // Add Expense with Idempotency & Offline Queueing
   addExpense: async (expensePayload) => {
-    const { room, currentMember, members, offlineQueue } = get();
+    const { room, currentMember, members, expenses, offlineQueue } = get();
     if (!room || !currentMember) return { success: false, error: 'No active room session' };
 
     const clientExpenseId = 'exp_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
@@ -147,7 +196,9 @@ export const useMobileRoomStore = create((set, get) => ({
       clientExpenseId,
     };
 
-    // Optimistic Local Store Update
+    const participantIds = fullPayload.participantIds || [];
+    const equalShare = participantIds.length > 0 ? parseFloat((parseFloat(fullPayload.amount) / participantIds.length).toFixed(2)) : parseFloat(fullPayload.amount);
+
     const optimisticExpense = {
       _id: clientExpenseId,
       description: fullPayload.description || 'Shared Expense',
@@ -155,27 +206,39 @@ export const useMobileRoomStore = create((set, get) => ({
       category: fullPayload.category || 'General',
       expenseScope: fullPayload.expenseScope || 'shared',
       paidBy: currentMember,
-      participants: (fullPayload.participantIds || []).map((id) => ({
-        memberId: members.find((m) => (m._id || m.id) === id) || { _id: id, name: 'Flatmate' },
-        share: parseFloat(fullPayload.amount) / (fullPayload.participantIds?.length || 1),
+      participants: participantIds.map((id) => ({
+        memberId: members.find((m) => (m._id || m.id) === id) || { _id: id, id, name: 'Flatmate' },
+        share: equalShare,
       })),
       createdAt: new Date().toISOString(),
-      isPendingSync: false,
+      isPendingSync: true,
     };
 
-    set({ expenses: [optimisticExpense, ...get().expenses] });
+    // Instant local state update & balance recalculation
+    const updatedExpenses = [optimisticExpense, ...expenses];
+    await storage.setItem('finlit_expenses', JSON.stringify(updatedExpenses));
+    set({ expenses: updatedExpenses });
+    get().recalculateLocalBalances();
 
     try {
       const res = await api.post('/expenses', fullPayload);
-      set({
-        expenses: [res.data.expense, ...get().expenses.filter((e) => e._id !== clientExpenseId)],
-        balances: res.data.balances || get().balances,
-      });
+      const serverExpense = res.data.expense;
+      const finalExpenses = [serverExpense, ...get().expenses.filter((e) => e._id !== clientExpenseId)];
+
+      await storage.setItem('finlit_expenses', JSON.stringify(finalExpenses));
+      set({ expenses: finalExpenses });
+
+      if (res.data.balances) {
+        await storage.setItem('finlit_balances', JSON.stringify(res.data.balances));
+        set({ balances: res.data.balances });
+      } else {
+        get().recalculateLocalBalances();
+      }
+
       await get().fetchDashboardData();
       return { success: true };
     } catch (err) {
       // Offline fallback: Queue for later sync
-      optimisticExpense.isPendingSync = true;
       const updatedQueue = [...offlineQueue, fullPayload];
       await storage.setItem('finlit_offline_queue', JSON.stringify(updatedQueue));
       set({ offlineQueue: updatedQueue });
@@ -193,8 +256,13 @@ export const useMobileRoomStore = create((set, get) => ({
 
     for (const pendingItem of queue) {
       try {
-        await api.post('/expenses', pendingItem);
+        if (pendingItem.type === 'settlement') {
+          await api.post('/settlements', pendingItem);
+        } else {
+          await api.post('/expenses', pendingItem);
+        }
       } catch (err) {
+        console.error('Failed to sync offline item:', pendingItem, err);
         remainingQueue.push(pendingItem);
       }
     }
@@ -205,14 +273,41 @@ export const useMobileRoomStore = create((set, get) => ({
   },
 
   // Record Settlement
-  createSettlement: async (toMemberId, amount, paymentMethod = 'UPI') => {
+  createSettlement: async (toMemberId, amount, paymentMethod = 'UPI', notes = '') => {
+    const { currentMember, settlements, offlineQueue } = get();
+    const payload = { toMemberId, amount: parseFloat(amount), paymentMethod, notes, type: 'settlement' };
+
+    const mockSettlement = {
+      _id: 'set_' + Date.now().toString(36),
+      fromMember: currentMember,
+      toMember: get().members.find((m) => (m._id || m.id) === toMemberId) || { _id: toMemberId, name: 'Flatmate' },
+      amount: parseFloat(amount),
+      paymentMethod,
+      createdAt: new Date().toISOString(),
+      isPendingSync: true,
+    };
+
+    const updatedSettlements = [mockSettlement, ...(settlements || [])];
+    await storage.setItem('finlit_settlements', JSON.stringify(updatedSettlements));
+    set({ settlements: updatedSettlements });
+
+    // Instantly update balances locally
+    get().recalculateLocalBalances();
+
     try {
-      const res = await api.post('/settlements', { toMemberId, amount, paymentMethod });
+      const res = await api.post('/settlements', payload);
+      if (res.data.updatedBalances) {
+        set({ balances: res.data.updatedBalances });
+      } else {
+        get().recalculateLocalBalances();
+      }
       await get().fetchDashboardData();
       return { success: true, settlement: res.data.settlement };
     } catch (err) {
-      const msg = err.response?.data?.message || 'Settlement failed';
-      return { success: false, error: msg };
+      const updatedQueue = [...offlineQueue, payload];
+      await storage.setItem('finlit_offline_queue', JSON.stringify(updatedQueue));
+      set({ offlineQueue: updatedQueue });
+      return { success: true, offline: true };
     }
   },
 

@@ -33,4 +33,17 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Interceptor to handle global 401 Unauthorized responses
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: error.response.data }));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

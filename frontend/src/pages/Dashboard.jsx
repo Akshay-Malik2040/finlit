@@ -56,8 +56,22 @@ export default function Dashboard() {
       syncOfflineQueue();
     };
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
-  }, []);
+
+    if (navigator.onLine && offlineQueue.length > 0) {
+      syncOfflineQueue();
+    }
+
+    const interval = setInterval(() => {
+      if (navigator.onLine && useRoomStore.getState().offlineQueue.length > 0) {
+        useRoomStore.getState().syncOfflineQueue();
+      }
+    }, 10000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(interval);
+    };
+  }, [offlineQueue.length]);
 
   if (!room || !currentMember) {
     return <RoomOnboardingPage />;

@@ -24,6 +24,15 @@ export default function App() {
 
   useEffect(() => {
     initSession();
+
+    const interval = setInterval(() => {
+      const state = useMobileRoomStore.getState();
+      if (state.offlineQueue.length > 0) {
+        state.syncOfflineQueue();
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Show accountless onboarding screen if no room or member session exists

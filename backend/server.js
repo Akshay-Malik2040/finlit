@@ -8,7 +8,19 @@ connectDB();
 
 const app = express();
 
-app.use(cors({ origin: '*' }));
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-device-id',
+      'x-member-id',
+      'x-room-id',
+    ],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
