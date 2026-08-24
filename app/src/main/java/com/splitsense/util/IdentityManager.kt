@@ -69,7 +69,11 @@ class IdentityManager @Inject constructor(
 
     suspend fun clearIdentity() {
         context.dataStore.edit { preferences ->
+            val existingDeviceId = preferences[DEVICE_ID]
             preferences.clear()
+            if (!existingDeviceId.isNullOrBlank()) {
+                preferences[DEVICE_ID] = existingDeviceId
+            }
         }
     }
 }

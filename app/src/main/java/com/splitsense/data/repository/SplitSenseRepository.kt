@@ -557,4 +557,15 @@ class SplitSenseRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    suspend fun leaveRoom() {
+        try {
+            expenseDao.clearExpenses()
+            memberDao.clearMembers()
+            roomDao.clearRoom()
+            identityManager.clearIdentity()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }

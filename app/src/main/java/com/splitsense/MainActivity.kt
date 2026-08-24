@@ -125,11 +125,15 @@ fun SplitSenseAppRoot(viewModel: MainViewModel = hiltViewModel()) {
                 )
             }
             composable(Screen.Settings.route) {
+                val scope = androidx.compose.runtime.rememberCoroutineScope()
                 SettingsScreen(
                     onBackClick = { navController.popBackStack() },
                     onLeaveRoom = {
-                        navController.navigate(Screen.Onboarding.route) {
-                            popUpTo(Screen.Home.route) { inclusive = true }
+                        scope.launch {
+                            viewModel.repository.leaveRoom()
+                            navController.navigate(Screen.Onboarding.route) {
+                                popUpTo(Screen.Home.route) { inclusive = true }
+                            }
                         }
                     }
                 )

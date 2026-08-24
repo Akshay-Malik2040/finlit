@@ -45,7 +45,7 @@ class HomeViewModel @Inject constructor(
             // 1. Observe local Room DB immediately so UI opens instantly without waiting for network
             launch {
                 identityManager.roomId.flatMapLatest { roomId ->
-                    if (roomId != null) {
+                    if (!roomId.isNullOrBlank()) {
                         combine(
                             repository.currentRoom,
                             repository.getExpenses(roomId),
@@ -83,7 +83,7 @@ class HomeViewModel @Inject constructor(
                 e.printStackTrace()
             }
             val roomId = identityManager.roomId.first()
-            if (roomId != null) {
+            if (!roomId.isNullOrBlank()) {
                 val latestExpenses = repository.fetchExpensesFromDb(roomId)
                 _state.update { it.copy(expenses = latestExpenses) }
                 refreshBalances()
