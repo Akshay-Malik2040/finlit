@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const membershipPeriodSchema = new mongoose.Schema(
   {
     joinedAt: {
