@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRoomStore } from '../store/useRoomStore';
 import QuickAddModal from '../components/QuickAddModal';
 import BalancesView from '../components/BalancesView';
@@ -43,6 +43,11 @@ export default function Dashboard() {
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
 
+  const isQuickAddOpenRef = useRef(isQuickAddOpen);
+  useEffect(() => {
+    isQuickAddOpenRef.current = isQuickAddOpen;
+  }, [isQuickAddOpen]);
+
   useEffect(() => {
     if (!room) return;
 
@@ -50,13 +55,13 @@ export default function Dashboard() {
 
     const pollInterval = setInterval(() => {
       // Don't poll while a modal is open — prevents mid-input re-renders
-      if (navigator.onLine && !document.hidden && !isQuickAddOpen) {
+      if (navigator.onLine && !document.hidden && !isQuickAddOpenRef.current) {
         useRoomStore.getState().fetchDashboardData();
       }
     }, 5000);
 
     return () => clearInterval(pollInterval);
-  }, [room, isQuickAddOpen]);
+  }, [room]);
 
   useEffect(() => {
     const handleOnline = () => {

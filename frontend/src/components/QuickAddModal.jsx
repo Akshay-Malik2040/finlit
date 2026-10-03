@@ -30,16 +30,25 @@ export default function QuickAddModal({ isOpen, onClose }) {
   const [expenseScope, setExpenseScope] = useState('shared');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Initialize selected members to EVERYONE by default
+  // Reset form fields ONLY when modal opens (not when members array updates)
   useEffect(() => {
-    if (isOpen && members.length > 0) {
-      setSelectedMemberIds(members.map((m) => m._id || m.id));
+    if (isOpen) {
       setAmount('');
       setDescription('');
       setCategory('Other');
       setExpenseScope('shared');
+      if (members && members.length > 0) {
+        setSelectedMemberIds(members.map((m) => m._id || m.id));
+      }
     }
-  }, [isOpen, members]);
+  }, [isOpen]);
+
+  // If members were loaded after the modal opened, populate selection without touching amount
+  useEffect(() => {
+    if (isOpen && selectedMemberIds.length === 0 && members && members.length > 0) {
+      setSelectedMemberIds(members.map((m) => m._id || m.id));
+    }
+  }, [isOpen, members, selectedMemberIds.length]);
 
   if (!isOpen) return null;
 
