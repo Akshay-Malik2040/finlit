@@ -3,7 +3,6 @@ import { useRoomStore } from '../store/useRoomStore';
 import QuickAddModal from '../components/QuickAddModal';
 import BalancesView from '../components/BalancesView';
 import RoomView from '../components/RoomView';
-import AskAISenseModal from '../components/AskAISenseModal';
 import RoomOnboardingPage from './RoomOnboardingPage';
 import { generateMineVsFlatPDF } from '../utils/pdfExporter';
 import {
@@ -41,7 +40,6 @@ export default function Dashboard() {
 
   const [activeTab, setActiveTab] = useState('home'); // 'home', 'activity', 'balances', 'room'
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const [isAskAIOpen, setIsAskAIOpen] = useState(false);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
 
@@ -51,13 +49,14 @@ export default function Dashboard() {
     fetchDashboardData();
 
     const pollInterval = setInterval(() => {
-      if (navigator.onLine && !document.hidden) {
+      // Don't poll while a modal is open — prevents mid-input re-renders
+      if (navigator.onLine && !document.hidden && !isQuickAddOpen) {
         useRoomStore.getState().fetchDashboardData();
       }
     }, 5000);
 
     return () => clearInterval(pollInterval);
-  }, [room]);
+  }, [room, isQuickAddOpen]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -550,7 +549,6 @@ export default function Dashboard() {
 
       {/* Modals */}
       <QuickAddModal isOpen={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} />
-      <AskAISenseModal isOpen={isAskAIOpen} onClose={() => setIsAskAIOpen(false)} />
     </div>
   );
 }
