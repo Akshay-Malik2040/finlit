@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRoomStore } from '../store/useRoomStore';
-import { X, Sparkles, Check, Users, User, ArrowRight } from 'lucide-react';
+import { X, Check, Users, User } from 'lucide-react';
 
 const CATEGORIES = [
   'Food & Dining',
@@ -21,17 +21,14 @@ const CATEGORIES = [
 ];
 
 export default function QuickAddModal({ isOpen, onClose }) {
-  const { members, currentMember, addExpense, parseExpenseWithAI } = useRoomStore();
+  const { members, currentMember, addExpense } = useRoomStore();
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Other');
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [expenseScope, setExpenseScope] = useState('shared');
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isParsingAI, setIsParsingAI] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAiInput, setShowAiInput] = useState(false);
 
   // Initialize selected members to EVERYONE by default
   useEffect(() => {
@@ -41,8 +38,6 @@ export default function QuickAddModal({ isOpen, onClose }) {
       setDescription('');
       setCategory('Other');
       setExpenseScope('shared');
-      setAiPrompt('');
-      setShowAiInput(false);
     }
   }, [isOpen, members]);
 
@@ -59,22 +54,6 @@ export default function QuickAddModal({ isOpen, onClose }) {
     }
   };
 
-  const handleAiParse = async (e) => {
-    e.preventDefault();
-    if (!aiPrompt.trim()) return;
-    setIsParsingAI(true);
-    const res = await parseExpenseWithAI(aiPrompt);
-    setIsParsingAI(false);
-    if (res.success && res.data) {
-      setAmount(res.data.amount ? res.data.amount.toString() : '');
-      setDescription(res.data.description || '');
-      setCategory(res.data.category || 'Other');
-      if (res.data.participantIds && res.data.participantIds.length > 0) {
-        setSelectedMemberIds(res.data.participantIds);
-      }
-      setShowAiInput(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -115,14 +94,6 @@ export default function QuickAddModal({ isOpen, onClose }) {
           <div className="flex items-center space-x-2">
             <button
               type="button"
-              onClick={() => setShowAiInput(!showAiInput)}
-              className="p-2 rounded-full text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition"
-              title="AI Quick Fill"
-            >
-              <Sparkles className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
               onClick={onClose}
               className="p-2 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
@@ -131,30 +102,6 @@ export default function QuickAddModal({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* AI Quick Fill Input */}
-        {showAiInput && (
-          <form onSubmit={handleAiParse} className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50">
-            <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 mb-2 flex items-center">
-              <Sparkles className="w-3.5 h-3.5 mr-1" /> Speak or type natural expense
-            </p>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                placeholder='e.g., "Paid 600 for WiFi for everyone"'
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                className="flex-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl px-3 py-2 border border-emerald-200 dark:border-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <button
-                type="submit"
-                disabled={isParsingAI || !aiPrompt.trim()}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center disabled:opacity-50"
-              >
-                {isParsingAI ? 'Parsing...' : <ArrowRight className="w-4 h-4" />}
-              </button>
-            </div>
-          </form>
-        )}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Dominant Amount Input */}
