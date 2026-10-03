@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import RoomOnboardingPage from './pages/RoomOnboardingPage';
+import InstallPrompt from './components/InstallPrompt';
 import { useRoomStore } from './store/useRoomStore';
 import { useThemeStore } from './store/useThemeStore';
 import { useEffect } from 'react';
@@ -20,6 +21,7 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-sans text-gray-900 dark:text-gray-100">
+        <InstallPrompt />
         <Routes>
           <Route
             path="/"

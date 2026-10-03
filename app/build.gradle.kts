@@ -19,11 +19,19 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Supply a production Supabase URL with -PSPLITSENSE_API_URL=https://<ref>.supabase.co/functions/v1/api/
+        val configuredApiUrl = (project.findProperty("SPLITSENSE_API_URL") as String?)
+            ?: "http://10.0.2.2:5000/api/"
+        buildConfigField("String", "API_BASE_URL", "\"${configuredApiUrl.ensureTrailingSlash()}\"")
     }
 
     buildTypes {
+        debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
             isMinifyEnabled = false
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -42,6 +50,8 @@ android {
         buildConfig = true
     }
 }
+
+private fun String.ensureTrailingSlash() = if (endsWith('/')) this else "$this/"
 
 dependencies {
     implementation(libs.androidx.core.ktx)

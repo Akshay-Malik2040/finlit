@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Maskable icon: full bleed emerald bg, content in safe zone (center 80%) -->
+  <rect width="512" height="512" fill="#059669"/>
+  <!-- House body (scaled down for safe zone) -->
+  <rect x="172" y="298" width="168" height="130" fill="white"/>
+  <!-- Roof -->
+  <polygon points="128,306 256,178 384,306" fill="white"/>
+  <!-- Door -->
+  <rect x="220" y="370" width="72" height="58" rx="10" fill="#059669"/>
+  <!-- Chimney -->
+  <rect x="302" y="194" width="32" height="68" fill="white"/>
+</svg>

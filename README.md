@@ -64,11 +64,15 @@ FinLit V2 operates on a zero-friction, mobile-first philosophy:
 - **Frontend**: React 19 + Vite, Tailwind CSS v4, Zustand, Lucide React, Recharts, jsPDF
 - **Mobile**: React Native + Native Android AppWidget Provider (`AppWidgetProvider`, Glance layout)
 - **Backend**: Node.js + Express.js
-- **Database**: MongoDB + Mongoose (Indexed schemas)
+- **Database**: MongoDB + Mongoose (legacy backend), with a Supabase Postgres + Edge Function deployment path for production
 
 ---
 
 ## 🚀 Getting Started
+
+### Production deployment with Supabase
+
+The original Express/Mongo backend is retained under `backend/`. For a managed Postgres deployment that both web and mobile clients can use, follow [the Supabase deployment guide](supabase/README.md). The Edge Function preserves the existing REST API shape, so no client rewrite or database credentials in the app are required.
 
 ### Prerequisites
 - Node.js (v18+)

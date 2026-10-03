@@ -43,7 +43,7 @@ interface SplitSenseApi {
         @Header("x-member-id") memberId: String,
         @Header("x-room-id") roomId: String,
         @Body request: CreateExpenseRequest
-    ): Response<ExpenseDto>
+    ): Response<ExpenseResponse>
 
     @PUT("api/expenses/{id}")
     suspend fun updateExpense(
@@ -52,7 +52,7 @@ interface SplitSenseApi {
         @Header("x-member-id") memberId: String,
         @Header("x-room-id") roomId: String,
         @Body request: CreateExpenseRequest
-    ): Response<ExpenseDto>
+    ): Response<ExpenseResponse>
 
     @DELETE("api/expenses/{id}")
     suspend fun deleteExpense(
@@ -83,7 +83,7 @@ interface SplitSenseApi {
         @Header("x-member-id") memberId: String,
         @Header("x-room-id") roomId: String,
         @Body request: CreateSettlementRequest
-    ): Response<SettlementDto>
+    ): Response<SettlementResponse>
 
     @GET("api/settlements")
     suspend fun getSettlements(
@@ -93,7 +93,7 @@ interface SplitSenseApi {
     ): Response<List<SettlementDto>>
 
     // --- Recurring Expenses ---
-    @POST("api/recurring")
+    @POST("api/recurring-expenses")
     suspend fun createRecurringExpense(
         @Header("x-device-id") deviceId: String,
         @Header("x-member-id") memberId: String,
@@ -101,14 +101,14 @@ interface SplitSenseApi {
         @Body request: CreateRecurringRequest
     ): Response<RecurringExpenseDto>
 
-    @GET("api/recurring")
+    @GET("api/recurring-expenses")
     suspend fun getRecurringExpenses(
         @Header("x-device-id") deviceId: String,
         @Header("x-member-id") memberId: String,
         @Header("x-room-id") roomId: String
     ): Response<List<RecurringExpenseDto>>
 
-    @DELETE("api/recurring/{id}")
+    @DELETE("api/recurring-expenses/{id}")
     suspend fun deleteRecurringExpense(
         @Path("id") recurringId: String,
         @Header("x-device-id") deviceId: String,
@@ -145,6 +145,12 @@ interface SplitSenseApi {
 data class GenericMessageResponse(
     val message: String
 )
+
+@Serializable
+data class ExpenseResponse(val expense: ExpenseDto, val balances: BalancesResponse? = null)
+
+@Serializable
+data class SettlementResponse(val settlement: SettlementDto, val updatedBalances: BalancesResponse? = null)
 
 @Serializable
 data class BalancesResponse(

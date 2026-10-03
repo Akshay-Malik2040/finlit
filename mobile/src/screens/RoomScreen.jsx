@@ -7,11 +7,12 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { useMobileRoomStore } from '../store/useMobileRoomStore';
 
 export default function RoomScreen() {
-  const { room, currentMember, members, recoveryCode, removeMember } = useMobileRoomStore();
+  const { room, currentMember, members, recoveryCode, removeMember, logout, fetchDashboardData, isLoading } = useMobileRoomStore();
 
   const handleCopyCode = () => {
     if (room?.joinCode) {
@@ -30,9 +31,29 @@ export default function RoomScreen() {
     ]);
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Leave Room',
+      'You will be logged out of this room. You can rejoin later using the join code.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: () => logout(),
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={fetchDashboardData} tintColor="#10b981" />
+        }
+      >
         <Text style={styles.title}>Group Settings</Text>
         <Text style={styles.subtitle}>Household identity & members management</Text>
 
@@ -95,6 +116,11 @@ export default function RoomScreen() {
             );
           })}
         </View>
+
+        {/* Logout / Leave Room */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Text style={styles.logoutBtnText}>🚪 Leave Room</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -230,7 +256,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#064e3b',
     alignItems: 'center',
-    justify.content: 'center',
+    justifyContent: 'center',
   },
   avatarText: {
     color: '#6ee7b7',
@@ -256,5 +282,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: '#fda4af',
+  },
+  logoutBtn: {
+    backgroundColor: '#7f1d1d',
+    borderRadius: 20,
+    padding: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#991b1b',
+  },
+  logoutBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#fca5a5',
   },
 });

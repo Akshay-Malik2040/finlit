@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   View,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   StatusBar,
   Modal,
+  AppState,
 } from 'react-native';
 import { useMobileRoomStore } from './src/store/useMobileRoomStore';
 import OnboardingScreen from './src/screens/OnboardingScreen';
@@ -21,10 +22,12 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('Home'); // 'Home', 'Activity', 'Balances', 'Room'
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     initSession();
 
+    // Background polling: sync every 30 seconds when app is active
     const interval = setInterval(() => {
       const state = useMobileRoomStore.getState();
       if (state.offlineQueue.length > 0) {
@@ -32,9 +35,29 @@ export default function App() {
       } else if (state.room) {
         state.fetchDashboardData();
       }
-    }, 5000);
+    }, 30000);
 
-    return () => clearInterval(interval);
+    // AppState listener: refresh data when app comes to foreground
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        // App has come to the foreground — sync immediately
+        const state = useMobileRoomStore.getState();
+        if (state.offlineQueue.length > 0) {
+          state.syncOfflineQueue();
+        } else if (state.room) {
+          state.fetchDashboardData();
+        }
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
   }, []);
 
   // Show accountless onboarding screen if no room or member session exists

@@ -2,7 +2,10 @@ import axios from 'axios';
 import storage from '../storage/asyncStorage';
 
 // Base API URL for development & production fallback
-const API_BASE_URL = 'http://10.0.2.2:5000/api'; // Android Emulator default host
+// Set SPLITSENSE_API_URL at build time for Supabase, e.g.
+// https://<project-ref>.supabase.co/functions/v1/api. The fallback keeps local
+// Android-emulator development with the existing Express server working.
+const API_BASE_URL = process.env.SPLITSENSE_API_URL || 'http://10.0.2.2:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -39,9 +42,12 @@ api.interceptors.request.use(
 );
 
 // Interceptor to handle global 401 Unauthorized responses
+// Only clears session on genuine server 401s, NOT on network errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // Only clear session on actual server 401 responses
+    // Network errors (no response) should NOT trigger session clear
     if (error.response && error.response.status === 401) {
       try {
         await storage.removeItem('finlit_member_id');
@@ -52,6 +58,8 @@ api.interceptors.response.use(
         console.error('Error clearing mobile storage on 401:', e);
       }
     }
+    // For network errors (no response), just reject without clearing session
+    // This preserves offline state so the user can continue using the app
     return Promise.reject(error);
   }
 );

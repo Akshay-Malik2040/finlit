@@ -7,6 +7,7 @@ import com.splitsense.data.local.dao.ExpenseDao
 import com.splitsense.data.local.dao.MemberDao
 import com.splitsense.data.local.dao.RoomDao
 import com.splitsense.data.remote.SplitSenseApi
+import com.splitsense.BuildConfig
 import com.splitsense.util.IdentityManager
 import dagger.Module
 import dagger.Provides
@@ -40,7 +41,8 @@ object AppModule {
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
+                // Avoid logging room codes, recovery codes, and transactions in release builds.
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
             })
             .build()
     }
@@ -49,8 +51,7 @@ object AppModule {
     @Singleton
     fun provideSplitSenseApi(client: OkHttpClient, json: Json): SplitSenseApi {
         return Retrofit.Builder()
-            // Configured for local Wi-Fi connection to host PC (192.168.1.7)
-            .baseUrl("http://192.168.1.7:5000/")
+            .baseUrl(BuildConfig.API_BASE_URL)
             .client(client)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

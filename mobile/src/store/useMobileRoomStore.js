@@ -25,10 +25,14 @@ export const useMobileRoomStore = create((set, get) => ({
   isSyncing: false,
   error: null,
   offlineQueue: [],
+  lastSyncTimestamp: null,
 
-  // Initialize session from storage
+  // Initialize session from persistent storage
   initSession: async () => {
     try {
+      // Ensure storage is fully initialized (load from disk into cache)
+      await storage.initialize();
+
       const roomRaw = await storage.getItem('finlit_room');
       const memberRaw = await storage.getItem('finlit_member');
       const membersRaw = await storage.getItem('finlit_members');
@@ -37,6 +41,7 @@ export const useMobileRoomStore = create((set, get) => ({
       const balancesRaw = await storage.getItem('finlit_balances');
       const recoveryCode = await storage.getItem('finlit_recovery_code');
       const queueRaw = await storage.getItem('finlit_offline_queue');
+      const lastSync = await storage.getItem('finlit_last_sync');
 
       const room = roomRaw ? JSON.parse(roomRaw) : null;
       const currentMember = memberRaw ? JSON.parse(memberRaw) : null;
@@ -46,18 +51,30 @@ export const useMobileRoomStore = create((set, get) => ({
       const balances = balancesRaw ? JSON.parse(balancesRaw) : get().balances;
       const offlineQueue = queueRaw ? JSON.parse(queueRaw) : [];
 
-      set({ room, currentMember, members, expenses, settlements, balances, recoveryCode, offlineQueue });
+      set({
+        room,
+        currentMember,
+        members,
+        expenses,
+        settlements,
+        balances,
+        recoveryCode,
+        offlineQueue,
+        lastSyncTimestamp: lastSync || null,
+      });
 
       if (room) {
+        // Immediately recalculate from local data (instant, works offline)
         get().recalculateLocalBalances();
-        await get().fetchDashboardData();
+        // Then try to fetch latest from server (no-op if offline)
+        get().fetchDashboardData();
       }
     } catch (err) {
       console.error('Init mobile session error:', err);
     }
   },
 
-  // Save session
+  // Save session to persistent storage
   saveSession: async (room, member, recoveryCode = null) => {
     const roomId = room.id || room._id;
     const memberId = member.id || member._id;
@@ -74,6 +91,37 @@ export const useMobileRoomStore = create((set, get) => ({
     set({ room, currentMember: member, recoveryCode });
   },
 
+  // Logout: clear all session data and reset store
+  logout: async () => {
+    try {
+      await storage.clearSession();
+    } catch (err) {
+      console.error('Logout storage clear error:', err);
+    }
+    set({
+      room: null,
+      currentMember: null,
+      members: [],
+      myRooms: [],
+      recoveryCode: null,
+      expenses: [],
+      settlements: [],
+      balances: {
+        summary: { netBalance: 0, totalIOwe: 0, totalOwedToMe: 0 },
+        youOwe: [],
+        youAreOwed: [],
+        simplifiedSettlementPlan: [],
+        allMemberBalances: {},
+      },
+      monthlySummary: null,
+      isLoading: false,
+      isSyncing: false,
+      error: null,
+      offlineQueue: [],
+      lastSyncTimestamp: null,
+    });
+  },
+
   // Create Room
   createRoom: async (roomName, creatorName) => {
     set({ isLoading: true, error: null });
@@ -87,8 +135,11 @@ export const useMobileRoomStore = create((set, get) => ({
 
       const { room, member, recoveryCode } = res.data;
       await get().saveSession(room, member, recoveryCode);
+      // Persist members (just self at this point)
+      const members = [member];
+      await storage.setItem('finlit_members', JSON.stringify(members));
+      set({ members, isLoading: false });
       await get().fetchDashboardData();
-      set({ isLoading: false });
       return { success: true };
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to create room';
@@ -110,7 +161,9 @@ export const useMobileRoomStore = create((set, get) => ({
 
       const { room, member, members, recoveryCode } = res.data;
       await get().saveSession(room, member, recoveryCode);
-      set({ members: members || [] });
+      const membersList = members || [];
+      await storage.setItem('finlit_members', JSON.stringify(membersList));
+      set({ members: membersList });
       await get().fetchDashboardData();
       set({ isLoading: false });
       return { success: true };
@@ -136,7 +189,7 @@ export const useMobileRoomStore = create((set, get) => ({
     return computedBalances;
   },
 
-  // Fetch Expenses, Settlements & Balances
+  // Fetch Expenses, Settlements & Balances from server
   fetchDashboardData: async () => {
     const { room, currentMember } = get();
     if (!room) return;
@@ -153,10 +206,16 @@ export const useMobileRoomStore = create((set, get) => ({
       const expenses = expensesRes.data || [];
       const settlements = settlementsRes.data || [];
       const members = roomRes.data?.members || [];
+      const updatedRoom = roomRes.data?.room || room;
 
-      await storage.setItem('finlit_expenses', JSON.stringify(expenses));
-      await storage.setItem('finlit_settlements', JSON.stringify(settlements));
-      await storage.setItem('finlit_members', JSON.stringify(members));
+      // Persist everything to disk
+      await Promise.all([
+        storage.setItem('finlit_expenses', JSON.stringify(expenses)),
+        storage.setItem('finlit_settlements', JSON.stringify(settlements)),
+        storage.setItem('finlit_members', JSON.stringify(members)),
+        storage.setItem('finlit_room', JSON.stringify(updatedRoom)),
+        storage.setItem('finlit_last_sync', new Date().toISOString()),
+      ]);
 
       let balances = balancesRes.data;
       if (!balances || !balances.summary) {
@@ -175,7 +234,9 @@ export const useMobileRoomStore = create((set, get) => ({
         balances,
         monthlySummary: summaryRes.data || null,
         members,
+        room: updatedRoom,
         isLoading: false,
+        lastSyncTimestamp: new Date().toISOString(),
       });
 
       // Auto-trigger offline queue sync if pending items exist
@@ -183,7 +244,8 @@ export const useMobileRoomStore = create((set, get) => ({
         get().syncOfflineQueue();
       }
     } catch (err) {
-      console.warn('Fetch mobile dashboard data offline fallback:', err);
+      console.warn('Fetch mobile dashboard data offline fallback:', err.message);
+      // Offline fallback: recalculate from persisted local data
       get().recalculateLocalBalances();
       set({ isLoading: false });
     }

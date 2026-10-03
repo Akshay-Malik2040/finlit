@@ -9,11 +9,12 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useMobileRoomStore } from '../store/useMobileRoomStore';
 
 export default function BalancesScreen() {
-  const { balances, createSettlement } = useMobileRoomStore();
+  const { balances, createSettlement, fetchDashboardData, isLoading } = useMobileRoomStore();
 
   const [settleTarget, setSettleTarget] = useState(null);
   const [settleAmount, setSettleAmount] = useState('');
@@ -43,7 +44,12 @@ export default function BalancesScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={fetchDashboardData} tintColor="#10b981" />
+        }
+      >
         <Text style={styles.title}>Household Balances</Text>
         <Text style={styles.subtitle}>Person-by-person debt standings & settlements</Text>
 
@@ -276,7 +282,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#064e3b',
     alignItems: 'center',
-    justify.content: 'center',
+    justifyContent: 'center',
   },
   avatarOwedText: {
     color: '#6ee7b7',
